@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/note.dart';
 import '../models/task_doc.dart';
 import '../services/api.dart';
@@ -51,10 +52,12 @@ class AppState extends ChangeNotifier {
     notes = d.notes;
     widgetIds = d.widgetIds;
     notifyListeners();
+    _updateWidget();
     if (configured) sync();
   }
 
-  Future<void> testConnection(String url, String tok) => MemosApi(url, tok).ping();
+  Future<void> testConnection(String url, String tok) =>
+      MemosApi(url, tok).ping();
 
   Future<void> saveSettings(String url, String tok) async {
     final p = await SharedPreferences.getInstance();
@@ -155,6 +158,7 @@ class AppState extends ChangeNotifier {
       }
       error = null;
       await _persist();
+      await _updateWidget();
     } catch (e) {
       error = '$e';
       LogService.log('Push fehlgeschlagen (${n.id}): $e');
@@ -197,22 +201,62 @@ class AppState extends ChangeNotifier {
 
   Future<void> _updateWidget() async {
     try {
-      final sel = visible.where((n) => widgetIds.contains(n.id)).take(5).toList();
+      final sel = visible
+          .where((n) => widgetIds.contains(n.id))
+          .take(5)
+          .toList();
       for (var i = 0; i < 5; i++) {
-        String label = '', id = '';
+        String title = '', preview = '', id = '';
         if (i < sel.length) {
-          final open = countOpen(parseDoc(sel[i].content)
-              .whereType<TaskSeg>()
-              .expand((s) => s.roots)
-              .toList());
-          label = open > 0 ? '${sel[i].title}  ·  $open offen' : sel[i].title;
+          title = sel[i].title;
+          preview = _widgetPreview(sel[i].content);
           id = sel[i].id;
         }
-        await HomeWidget.saveWidgetData<String>('label_$i', label);
+        await HomeWidget.saveWidgetData<String>('title_$i', title);
+        await HomeWidget.saveWidgetData<String>('preview_$i', preview);
         await HomeWidget.saveWidgetData<String>('id_$i', id);
       }
       await HomeWidget.updateWidget(
-          androidName: 'NoteWidgetProvider', iOSName: 'NoteWidget');
-    } catch (_) {}
+        androidName: 'NoteWidgetProvider',
+        iOSName: 'NoteWidget',
+      );
+    } catch (e) {
+      LogService.log('Widget konnte nicht aktualisiert werden: $e');
+    }
+  }
+
+  String _widgetPreview(String content) {
+    final lines = content.split('\n');
+    final first = lines.indexWhere((line) => line.trim().isNotEmpty);
+    if (first < 0) return 'Leere Notiz';
+    final segments = parseDoc(lines.skip(first + 1).join('\n'));
+    final preview = <String>[];
+
+    void addTasks(List<Task> tasks, TaskListType type) {
+      for (final task in tasks) {
+        if (type != TaskListType.task || !task.done) {
+          final marker = type == TaskListType.task ? '[ ]' : '-';
+          preview.add('$marker ${task.text}');
+        }
+        addTasks(task.children, type);
+      }
+    }
+
+    for (final segment in segments) {
+      if (segment is TextSeg) {
+        preview.addAll(
+          segment.text
+              .split('\n')
+              .where((line) => line.trim().isNotEmpty)
+              .map((line) => line.replaceAll(RegExp(r'[*_`#]'), '').trim()),
+        );
+      } else {
+        final taskSegment = segment as TaskSeg;
+        addTasks(taskSegment.roots, taskSegment.type);
+      }
+    }
+
+    final text = preview.take(3).join(' · ');
+    return text.isEmpty ? 'Leere Notiz' : text;
   }
 }

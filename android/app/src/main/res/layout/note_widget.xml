@@ -11,9 +11,47 @@
         android:text="Notizen" android:textColor="#80CBC4"
         android:textSize="12sp" android:textStyle="bold" android:paddingBottom="4dp"/>
 
-    <TextView android:id="@+id/n0" style="@style/NoteRow"/>
-    <TextView android:id="@+id/n1" style="@style/NoteRow"/>
-    <TextView android:id="@+id/n2" style="@style/NoteRow"/>
-    <TextView android:id="@+id/n3" style="@style/NoteRow"/>
-    <TextView android:id="@+id/n4" style="@style/NoteRow"/>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+        <LinearLayout android:id="@+id/r0" style="@style/NoteRow">
+            <TextView android:id="@+id/n0" style="@style/NoteTitle"/>
+            <TextView android:id="@+id/p0" style="@style/NotePreview"/>
+        </LinearLayout>
+        <LinearLayout android:id="@+id/r1" style="@style/NoteRow">
+            <TextView android:id="@+id/n1" style="@style/NoteTitle"/>
+            <TextView android:id="@+id/p1" style="@style/NotePreview"/>
+        </LinearLayout>
+        <LinearLayout android:id="@+id/r2" style="@style/NoteRow">
+            <TextView android:id="@+id/n2" style="@style/NoteTitle"/>
+            <TextView android:id="@+id/p2" style="@style/NotePreview"/>
+        </LinearLayout>
+        <LinearLayout android:id="@+id/r3" style="@style/NoteRow">
+            <TextView android:id="@+id/n3" style="@style/NoteTitle"/>
+            <TextView android:id="@+id/p3" style="@style/NotePreview"/>
+        </LinearLayout>
+        <LinearLayout android:id="@+id/r4" style="@style/NoteRow">
+            <TextView android:id="@+id/n4" style="@style/NoteTitle"/>
+            <TextView android:id="@+id/p4" style="@style/NotePreview"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="end">
+        <TextView
+            android:id="@+id/widget_add"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="end"
+            android:background="@drawable/widget_fab_bg"
+            android:contentDescription="Aktionen"
+            android:gravity="center"
+            android:text="+"
+            android:textColor="#FFFFFF"
+            android:textSize="28sp"/>
+    </FrameLayout>
 </LinearLayout>
