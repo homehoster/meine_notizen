@@ -25,16 +25,37 @@ class NotizApp extends StatefulWidget {
   State<NotizApp> createState() => _NotizAppState();
 }
 
-class _NotizAppState extends State<NotizApp> {
+class _NotizAppState extends State<NotizApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _widgetChannel.setMethodCallHandler((call) async {
       if (call.method == 'openWidgetUri' && call.arguments is String) {
         _open(Uri.tryParse(call.arguments as String));
       }
     });
     _widgetChannel.invokeMethod<void>('ready');
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    final state = context.read<AppState>();
+    switch (lifecycle) {
+      case AppLifecycleState.resumed:
+        state.onForeground();
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        state.onBackground();
+      default:
+        break;
+    }
   }
 
   void _open(Uri? uri) {

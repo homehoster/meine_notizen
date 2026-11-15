@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -12,8 +13,13 @@ import '../services/log.dart';
 import '../services/store.dart';
 
 class AppState extends ChangeNotifier {
+  /// Ruhezeit nach der letzten Änderung, bevor eine Notiz zum Server gesendet wird.
+  /// (Lokal wird bereits nach 600 ms gespeichert, siehe NoteScreen.)
+  static const _pushDelay = Duration(seconds: 4);
+
   final _store = LocalStore();
   final _secure = const FlutterSecureStorage();
+  final Map<Note, Timer> _pushTimers = {};
 
   String baseUrl = '';
   String token = '';
@@ -22,7 +28,13 @@ class AppState extends ChangeNotifier {
   Set<String> widgetIds = {};
   bool syncing = false;
   String? error;
+
+  /// Einmaliger Hinweis (z. B. beschädigte lokale Datei wiederhergestellt).
+  String? notice;
   bool logEnabled = false;
+
+  /// Vom geöffneten Editor gesetzt: sichert ungespeicherten Text sofort.
+  Future<void> Function()? onBeforeBackground;
 
   bool get configured => baseUrl.isNotEmpty && token.isNotEmpty;
   MemosApi get _api => MemosApi(baseUrl, token);
@@ -47,15 +59,24 @@ class AppState extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     baseUrl = p.getString('url') ?? '';
     themeMode = ThemeMode.values[p.getInt('theme') ?? 0];
-    logEnabled = p.getBool('log') ?? true;
+    logEnabled = p.getBool('log') ?? false;
     LogService.setEnabled(logEnabled);
     token = await _secure.read(key: 'token') ?? '';
     final d = await _store.load();
     notes = d.notes;
     widgetIds = d.widgetIds;
+    if (d.warning != null) {
+      notice = d.warning;
+      LogService.log(d.warning!);
+    }
     notifyListeners();
-    _updateWidget();
+    unawaited(_updateWidget()); // Widget beim Start der App aktualisieren
     if (configured) sync();
+  }
+
+  void dismissNotice() {
+    notice = null;
+    notifyListeners();
   }
 
   Future<void> testConnection(String url, String tok) =>
@@ -69,6 +90,17 @@ class AppState extends ChangeNotifier {
     await _secure.write(key: 'token', value: token);
     notifyListeners();
     sync();
+  }
+
+  /// Entfernt Server-URL und Token von diesem Gerät. Lokale Notizen bleiben erhalten.
+  Future<void> clearServerSettings() async {
+    final p = await SharedPreferences.getInstance();
+    baseUrl = '';
+    token = '';
+    error = null;
+    await p.remove('url');
+    await _secure.delete(key: 'token');
+    notifyListeners();
   }
 
   Future<void> setTheme(ThemeMode m) async {
@@ -104,45 +136,79 @@ class AppState extends ChangeNotifier {
 
   Future<void> discardIfEmpty(Note n) async {
     if (n.isLocal && n.content.trim().isEmpty) {
+      _pushTimers.remove(n)?.cancel();
       notes.remove(n);
       await _persist();
       notifyListeners();
     }
   }
 
+  /// Speichert lokal (sofort) und plant den Push zum Server nach [_pushDelay] Ruhe.
   Future<void> saveContent(Note n, String content) async {
-    if (n.content == content) return;
+    if (n.deleted || n.content == content) return;
     n.content = content;
     n.updated = DateTime.now();
     n.dirty = true;
     await _persist();
     if (!notes.contains(n)) return;
     notifyListeners();
-    _updateWidget();
-    _push(n);
+    _schedulePush(n);
+  }
+
+  /// Beim Verlassen der Notiz: lokal sichern, leere neue Notiz verwerfen, sonst sofort pushen.
+  Future<void> finishEditing(Note n, String content) async {
+    await saveContent(n, content);
+    await discardIfEmpty(n);
+    if (notes.contains(n)) await pushNow(n);
   }
 
   Future<void> deleteNote(Note n) async {
+    _pushTimers.remove(n)?.cancel();
     n.deleted = true;
     n.dirty = true;
     widgetIds.remove(n.id);
     if (n.isLocal) notes.remove(n);
     await _persist();
     notifyListeners();
-    _updateWidget();
-    if (!n.isLocal) _push(n);
+    if (!n.isLocal) unawaited(_push(n));
   }
 
   Future<void> toggleWidget(Note n) async {
     if (!widgetIds.remove(n.id)) widgetIds.add(n.id);
     await _persist();
     notifyListeners();
-    _updateWidget();
+  }
+
+  void _schedulePush(Note n) {
+    if (!configured) return;
+    _pushTimers[n]?.cancel();
+    _pushTimers[n] = Timer(_pushDelay, () {
+      _pushTimers.remove(n);
+      unawaited(_push(n));
+    });
+  }
+
+  Future<void> pushNow(Note n) async {
+    _pushTimers.remove(n)?.cancel();
+    if (n.dirty || n.deleted) await _push(n);
+  }
+
+  Future<void> _flushPushes() async {
+    for (final t in _pushTimers.values) {
+      t.cancel();
+    }
+    _pushTimers.clear();
+    for (final n in List.of(notes)) {
+      if (n.dirty || n.deleted) await _push(n);
+    }
   }
 
   Future<void> _push(Note n) async {
     if (!configured || n.busy) return;
+    // Leere, noch nie gesendete Notizen nicht als leere Memos anlegen.
+    if (n.isLocal && !n.deleted && n.content.trim().isEmpty) return;
     n.busy = true;
+    var changedMeanwhile = false;
     try {
       if (n.deleted) {
         if (!n.isLocal) await _api.delete(n.id);
@@ -152,15 +218,22 @@ class AppState extends ChangeNotifier {
         final oldId = n.id;
         n.id = await _api.create(sent);
         if (widgetIds.remove(oldId)) widgetIds.add(n.id);
-        if (n.content == sent) n.dirty = false;
+        if (n.content == sent) {
+          n.dirty = false;
+        } else {
+          changedMeanwhile = true;
+        }
       } else {
         final sent = n.content;
         await _api.update(n.id, sent);
-        if (n.content == sent) n.dirty = false;
+        if (n.content == sent) {
+          n.dirty = false;
+        } else {
+          changedMeanwhile = true;
+        }
       }
       error = null;
       await _persist();
-      await _updateWidget();
     } catch (e) {
       error = '$e';
       LogService.log('Push fehlgeschlagen (${n.id}): $e');
@@ -168,6 +241,8 @@ class AppState extends ChangeNotifier {
       n.busy = false;
       notifyListeners();
     }
+    // Während des Sendens weitergetippt: neuen Stand nach der Ruhezeit nachsenden.
+    if (changedMeanwhile && notes.contains(n)) _schedulePush(n);
   }
 
   Future<void> sync() async {
@@ -185,12 +260,21 @@ class AppState extends ChangeNotifier {
       final merged = <Note>[];
       for (final r in remote) {
         final l = local[r.id];
-        merged.add(l != null && (l.dirty || l.deleted) ? l : r);
+        if (l == null) {
+          merged.add(r);
+          continue;
+        }
+        // Bestehendes Objekt behalten (ein geöffneter Editor hält darauf eine Referenz).
+        if (!l.dirty && !l.deleted) {
+          l.content = r.content;
+          l.updated = r.updated;
+          l.pinned = r.pinned;
+        }
+        merged.add(l);
       }
       merged.addAll(notes.where((n) => n.isLocal));
       notes = merged;
       await _persist();
-      _updateWidget();
       LogService.log('Sync fertig: ${notes.length} Notizen');
     } catch (e) {
       error = '$e';
@@ -199,6 +283,25 @@ class AppState extends ChangeNotifier {
       syncing = false;
       notifyListeners();
     }
+  }
+
+  /// App kommt in den Vordergrund.
+  Future<void> onForeground() => _updateWidget();
+
+  /// App geht in den Hintergrund bzw. wird geschlossen:
+  /// Editor sichern, Widget aktualisieren, offene Änderungen zum Server senden.
+  Future<void> onBackground() async {
+    try {
+      await onBeforeBackground?.call();
+    } catch (e) {
+      LogService.log('Editor sichern fehlgeschlagen: $e');
+    }
+    await _updateWidget();
+    final hadLocal = notes.any((n) => n.isLocal);
+    await _flushPushes();
+    // Neu angelegte Notizen bekommen beim Senden eine Server-ID: Widget-Links aktualisieren.
+    if (hadLocal) await _updateWidget();
+    await LogService.flush();
   }
 
   Future<void> _updateWidget() async {

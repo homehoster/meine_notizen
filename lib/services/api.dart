@@ -44,7 +44,7 @@ class MemosApi {
 
   Future<http.Response> _send(String method, Uri uri, {String? body}) async {
     await LogService.log('--> $method $uri');
-    await _dns(uri.host);
+    if (LogService.enabled) await _dns(uri.host);
     final sw = Stopwatch()..start();
     try {
       final r = await switch (method) {

@@ -108,14 +108,16 @@ String widgetPreview(String content) {
     var number = 0;
     for (final task in tasks) {
       number++;
-      final marker = switch (type) {
-        TaskListType.task => task.done ? '☑' : '☐',
-        TaskListType.bullet => '•',
-        TaskListType.numbered => '$number.',
-      };
-      final text = plainText(task.text);
-      if (text.isNotEmpty) {
-        preview.add('${'  ' * depth}$marker $text');
+      if (type != TaskListType.task || !task.done) {
+        final marker = switch (type) {
+          TaskListType.task => '☐',
+          TaskListType.bullet => '•',
+          TaskListType.numbered => '$number.',
+        };
+        final text = plainText(task.text);
+        if (text.isNotEmpty) {
+          preview.add('${'  ' * depth}$marker $text');
+        }
       }
       addTasks(task.children, type, depth + 1);
     }

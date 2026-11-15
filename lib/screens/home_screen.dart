@@ -106,6 +106,11 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
       body: Column(children: [
+        if (s.notice != null)
+          MaterialBanner(
+            content: Text(s.notice!),
+            actions: [TextButton(onPressed: s.dismissNotice, child: const Text('OK'))],
+          ),
         if (s.error != null)
           MaterialBanner(
             content: Text('Sync-Fehler: ${s.error}', maxLines: 3, overflow: TextOverflow.ellipsis),

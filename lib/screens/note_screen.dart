@@ -32,15 +32,43 @@ class _NoteScreenState extends State<NoteScreen> {
     segs = parseDoc(c.text);
     edit = TaskEditCtx(segments: () => segs, reuse: _reuse);
     mode = c.text.trim().isEmpty ? 1 : 0;
+    s.onBeforeBackground = _saveNow;
   }
 
   @override
   void dispose() {
     _t?.cancel();
-    s.saveContent(widget.note, c.text).then((_) => s.discardIfEmpty(widget.note));
+    if (s.onBeforeBackground == _saveNow) s.onBeforeBackground = null;
+    // Lokal sichern, leere neue Notiz verwerfen, sonst sofort zum Server senden.
+    s.finishEditing(widget.note, c.text);
     c.dispose();
     _undo.dispose();
     super.dispose();
+  }
+
+  /// Speichert den aktuellen Text sofort lokal (z. B. beim Wechsel in den Hintergrund).
+  Future<void> _saveNow() {
+    _t?.cancel();
+    return s.saveContent(widget.note, c.text);
+  }
+
+  /// Öffnet nur http, https und mailto; alles andere (intent:, file:, tel: …) wird blockiert.
+  Future<void> _openLink(String? href) async {
+    final msg = ScaffoldMessenger.of(context);
+    final uri = href == null ? null : Uri.tryParse(href.trim());
+    if (uri == null || !const {'http', 'https', 'mailto'}.contains(uri.scheme)) {
+      msg.showSnackBar(const SnackBar(
+          content: Text('Dieser Link-Typ wird aus Sicherheitsgründen nicht geöffnet')));
+      return;
+    }
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) {
+        msg.showSnackBar(const SnackBar(content: Text('Link konnte nicht geöffnet werden')));
+      }
+    } catch (_) {
+      msg.showSnackBar(const SnackBar(content: Text('Link konnte nicht geöffnet werden')));
+    }
   }
 
   void _schedule() {
@@ -210,11 +238,7 @@ class _NoteScreenState extends State<NoteScreen> {
                 ? const SizedBox.shrink()
                 : MarkdownBody(
                     data: seg.text,
-                    onTapLink: (t, href, title) {
-                      if (href != null) {
-                        launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
-                      }
-                    },
+                    onTapLink: (t, href, title) => _openLink(href),
                   ))
           else
             TaskSegView(
@@ -291,4 +315,4 @@ class _NoteScreenState extends State<NoteScreen> {
           : null,
     );
   }
-}
+}
