@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:home_widget/home_widget.dart';
@@ -201,21 +203,21 @@ class AppState extends ChangeNotifier {
 
   Future<void> _updateWidget() async {
     try {
-      final sel = visible
-          .where((n) => widgetIds.contains(n.id))
-          .take(5)
-          .toList();
-      for (var i = 0; i < 5; i++) {
-        String title = '', preview = '', id = '';
-        if (i < sel.length) {
-          title = sel[i].title;
-          preview = _widgetPreview(sel[i].content);
-          id = sel[i].id;
-        }
-        await HomeWidget.saveWidgetData<String>('title_$i', title);
-        await HomeWidget.saveWidgetData<String>('preview_$i', preview);
-        await HomeWidget.saveWidgetData<String>('id_$i', id);
-      }
+      final ordered = visible;
+      final selected = ordered.where((n) => widgetIds.contains(n.id)).toList();
+      final sel = selected.isEmpty ? ordered : selected;
+      final items = [
+        for (final note in sel)
+          {
+            'id': note.id,
+            'title': note.title,
+            'preview': widgetPreview(note.content),
+          },
+      ];
+      await HomeWidget.saveWidgetData<String>(
+        'widget_notes',
+        jsonEncode(items),
+      );
       await HomeWidget.updateWidget(
         androidName: 'NoteWidgetProvider',
         iOSName: 'NoteWidget',
@@ -223,40 +225,5 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       LogService.log('Widget konnte nicht aktualisiert werden: $e');
     }
-  }
-
-  String _widgetPreview(String content) {
-    final lines = content.split('\n');
-    final first = lines.indexWhere((line) => line.trim().isNotEmpty);
-    if (first < 0) return 'Leere Notiz';
-    final segments = parseDoc(lines.skip(first + 1).join('\n'));
-    final preview = <String>[];
-
-    void addTasks(List<Task> tasks, TaskListType type) {
-      for (final task in tasks) {
-        if (type != TaskListType.task || !task.done) {
-          final marker = type == TaskListType.task ? '[ ]' : '-';
-          preview.add('$marker ${task.text}');
-        }
-        addTasks(task.children, type);
-      }
-    }
-
-    for (final segment in segments) {
-      if (segment is TextSeg) {
-        preview.addAll(
-          segment.text
-              .split('\n')
-              .where((line) => line.trim().isNotEmpty)
-              .map((line) => line.replaceAll(RegExp(r'[*_`#]'), '').trim()),
-        );
-      } else {
-        final taskSegment = segment as TaskSeg;
-        addTasks(taskSegment.roots, taskSegment.type);
-      }
-    }
-
-    final text = preview.take(3).join(' · ');
-    return text.isEmpty ? 'Leere Notiz' : text;
   }
 }

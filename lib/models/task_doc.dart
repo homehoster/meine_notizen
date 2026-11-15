@@ -3,7 +3,8 @@ class Task {
   String text;
   bool done;
   List<Task> children;
-  Task(this.text, {this.done = false, List<Task>? children}) : children = children ?? [];
+  Task(this.text, {this.done = false, List<Task>? children})
+    : children = children ?? [];
 }
 
 enum TaskListType { task, bullet, numbered }
@@ -43,15 +44,16 @@ List<Segment> parseDoc(String content) {
   for (final line in content.split('\n')) {
     final taskMatch = _taskRe.firstMatch(line);
     final bulletMatch = taskMatch == null ? _bulletRe.firstMatch(line) : null;
-    final numberedMatch =
-        taskMatch == null && bulletMatch == null ? _numberedRe.firstMatch(line) : null;
+    final numberedMatch = taskMatch == null && bulletMatch == null
+        ? _numberedRe.firstMatch(line)
+        : null;
     if (taskMatch != null || bulletMatch != null || numberedMatch != null) {
       flush();
       final type = taskMatch != null
           ? TaskListType.task
           : bulletMatch != null
-              ? TaskListType.bullet
-              : TaskListType.numbered;
+          ? TaskListType.bullet
+          : TaskListType.numbered;
       if (cur == null || cur.type != type) {
         cur = TaskSeg([], type: type);
         segs.add(cur);
@@ -60,7 +62,10 @@ List<Segment> parseDoc(String content) {
       final match = taskMatch ?? bulletMatch ?? numberedMatch!;
       final indent = _level(match.group(1)!);
       final text = taskMatch != null ? taskMatch.group(3)! : match.group(2)!;
-      final t = Task(text, done: taskMatch != null && taskMatch.group(2) != ' ');
+      final t = Task(
+        text,
+        done: taskMatch != null && taskMatch.group(2) != ' ',
+      );
       while (stack.isNotEmpty && stack.last.key >= indent) {
         stack.removeLast();
       }
@@ -79,6 +84,60 @@ List<Segment> parseDoc(String content) {
   return segs;
 }
 
+String widgetPreview(String content) {
+  final lines = content.split('\n');
+  final first = lines.indexWhere((line) => line.trim().isNotEmpty);
+  if (first < 0) return '';
+
+  String plainText(String line) => line
+      .replaceFirst(RegExp(r'^\s{0,3}#{1,6}\s+'), '')
+      .replaceFirst(RegExp(r'^\s{0,3}>\s?'), '')
+      .replaceAllMapped(
+        RegExp(r'!\[([^\]]*)\]\([^)]+\)'),
+        (match) => match.group(1) ?? '',
+      )
+      .replaceAllMapped(
+        RegExp(r'\[([^\]]+)\]\([^)]+\)'),
+        (match) => match.group(1) ?? '',
+      )
+      .replaceAll(RegExp(r'(\*\*|__|~~|`|\*|_)'), '')
+      .trim();
+
+  final preview = <String>[];
+  void addTasks(List<Task> tasks, TaskListType type, int depth) {
+    var number = 0;
+    for (final task in tasks) {
+      number++;
+      final marker = switch (type) {
+        TaskListType.task => task.done ? '☑' : '☐',
+        TaskListType.bullet => '•',
+        TaskListType.numbered => '$number.',
+      };
+      final text = plainText(task.text);
+      if (text.isNotEmpty) {
+        preview.add('${'  ' * depth}$marker $text');
+      }
+      addTasks(task.children, type, depth + 1);
+    }
+  }
+
+  for (final segment in parseDoc(lines.skip(first + 1).join('\n'))) {
+    if (segment is TextSeg) {
+      preview.addAll(
+        segment.text
+            .split('\n')
+            .map(plainText)
+            .where((line) => line.isNotEmpty),
+      );
+    } else {
+      final taskSegment = segment as TaskSeg;
+      addTasks(taskSegment.roots, taskSegment.type, 0);
+    }
+  }
+
+  return preview.take(5).join('\n');
+}
+
 String _tasksToMd(List<Task> ts, int d, TaskListType type) {
   final lines = <String>[];
   var number = 0;
@@ -90,8 +149,9 @@ String _tasksToMd(List<Task> ts, int d, TaskListType type) {
       TaskListType.bullet => '-',
       TaskListType.numbered => '$number.',
     };
-    final children =
-        t.children.isEmpty ? '' : '\n${_tasksToMd(t.children, d + 1, type)}';
+    final children = t.children.isEmpty
+        ? ''
+        : '\n${_tasksToMd(t.children, d + 1, type)}';
     lines.add('${'  ' * d}$marker ${t.text}$children');
   }
   return lines.join('\n');
@@ -126,7 +186,8 @@ List<Task> findTasks(List<Segment> segs, String query, {Task? exclude}) {
   final out = <Task>[];
   void walk(List<Task> ts) {
     for (final t in ts) {
-      if (!identical(t, exclude) && t.text.toLowerCase().contains(q)) out.add(t);
+      if (!identical(t, exclude) && t.text.toLowerCase().contains(q))
+        out.add(t);
       walk(t.children);
     }
   }
@@ -136,6 +197,7 @@ List<Task> findTasks(List<Segment> segs, String query, {Task? exclude}) {
   }
   return out;
 }
+
 void _setDone(Task t, bool v) {
   t.done = v;
   for (final c in t.children) {
@@ -172,7 +234,12 @@ int countOpen(List<Task> ts) =>
     ts.fold(0, (n, t) => n + (t.done ? 0 : 1) + countOpen(t.children));
 
 /// Verschiebt innerhalb der sichtbaren (gefilterten) Liste.
-void reorderVisible(List<Task> all, bool Function(Task) vis, int oldI, int newI) {
+void reorderVisible(
+  List<Task> all,
+  bool Function(Task) vis,
+  int oldI,
+  int newI,
+) {
   final visible = all.where(vis).toList();
   if (newI > oldI) newI -= 1;
   final item = visible.removeAt(oldI);

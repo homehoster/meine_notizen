@@ -1,10 +1,11 @@
 package com.github.homehoster.meine_notizen
 
 import android.appwidget.AppWidgetManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
-import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetProvider
@@ -16,32 +17,43 @@ class NoteWidgetProvider : HomeWidgetProvider() {
         appWidgetIds: IntArray,
         widgetData: SharedPreferences
     ) {
-        val rows = intArrayOf(R.id.r0, R.id.r1, R.id.r2, R.id.r3, R.id.r4)
-        val titles = intArrayOf(R.id.n0, R.id.n1, R.id.n2, R.id.n3, R.id.n4)
-        val previews = intArrayOf(R.id.p0, R.id.p1, R.id.p2, R.id.p3, R.id.p4)
+        val noteData = widgetData.getString(NoteWidgetService.NOTE_DATA_KEY, "[]") ?: "[]"
+        context.getSharedPreferences(NoteWidgetService.PREFERENCES_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(NoteWidgetService.NOTE_DATA_KEY, noteData)
+            .apply()
+
         appWidgetIds.forEach { widgetId ->
             val views = RemoteViews(context.packageName, R.layout.note_widget).apply {
-                for (i in 0..4) {
-                    val title = widgetData.getString("title_$i", "") ?: ""
-                    val preview = widgetData.getString("preview_$i", "") ?: ""
-                    val noteId = widgetData.getString("id_$i", "") ?: ""
-                    setTextViewText(titles[i], title)
-                    setTextViewText(previews[i], preview)
-                    setViewVisibility(rows[i], if (title.isEmpty()) View.GONE else View.VISIBLE)
-                    if (noteId.isNotEmpty()) {
-                        setOnClickPendingIntent(
-                            rows[i],
-                            HomeWidgetLaunchIntent.getActivity(
-                                context, MainActivity::class.java,
-                                Uri.parse("notizapp://note/$noteId")
-                            )
-                        )
-                    }
+                val serviceIntent = Intent(context, NoteWidgetService::class.java).apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+                    data = Uri.parse("notizapp-widget://notes/$widgetId")
                 }
+                setRemoteAdapter(R.id.widget_list, serviceIntent)
+                setEmptyView(R.id.widget_list, R.id.widget_empty)
+
+                val noteClickIntent = Intent(context, MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
+                setPendingIntentTemplate(
+                    R.id.widget_list,
+                    PendingIntent.getActivity(
+                        context,
+                        widgetId,
+                        noteClickIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                    )
+                )
                 setOnClickPendingIntent(
                     R.id.widget_add,
-                    HomeWidgetLaunchIntent.getActivity(
-                        context, MainActivity::class.java, Uri.parse("notizapp://actions")
+                    PendingIntent.getActivity(
+                        context,
+                        widgetId + 10000,
+                        Intent(context, WidgetActionActivity::class.java).apply {
+                            data = Uri.parse("notizapp-widget://actions/$widgetId")
+                        },
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
                 )
                 setOnClickPendingIntent(
@@ -52,6 +64,7 @@ class NoteWidgetProvider : HomeWidgetProvider() {
                 )
             }
             appWidgetManager.updateAppWidget(widgetId, views)
+            appWidgetManager.notifyAppWidgetViewDataChanged(widgetId, R.id.widget_list)
         }
     }
 }

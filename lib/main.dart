@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +8,8 @@ import 'screens/note_screen.dart';
 import 'state/app_state.dart';
 
 final navKey = GlobalKey<NavigatorState>();
+const _widgetChannel =
+    MethodChannel('com.github.homehoster.meine_notizen/widget');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,8 +29,12 @@ class _NotizAppState extends State<NotizApp> {
   @override
   void initState() {
     super.initState();
-    HomeWidget.initiallyLaunchedFromHomeWidget().then(_open);
-    HomeWidget.widgetClicked.listen(_open);
+    _widgetChannel.setMethodCallHandler((call) async {
+      if (call.method == 'openWidgetUri' && call.arguments is String) {
+        _open(Uri.tryParse(call.arguments as String));
+      }
+    });
+    _widgetChannel.invokeMethod<void>('ready');
   }
 
   void _open(Uri? uri) {

@@ -2,6 +2,7 @@ package com.github.homehoster.meine_notizen
 
 import android.content.ContentUris
 import android.content.ContentValues
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -13,8 +14,12 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.github.homehoster.meine_notizen/logs"
+    private val widgetChannelName = "com.github.homehoster.meine_notizen/widget"
     private val fileName = "notizen.log"
     private var logFileUri: Uri? = null
+    private var widgetUriChannel: MethodChannel? = null
+    private var widgetChannelReady = false
+    private var pendingWidgetUri: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -33,6 +38,45 @@ class MainActivity : FlutterActivity() {
                     result.error("LOG_ERROR", e.message, null)
                 }
             }
+        widgetUriChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            widgetChannelName
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                if (call.method == "ready") {
+                    widgetChannelReady = true
+                    result.success(null)
+                    pendingWidgetUri?.let { uri ->
+                        pendingWidgetUri = null
+                        channel.invokeMethod("openWidgetUri", uri)
+                    }
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
+        dispatchWidgetUri(intent?.data)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        dispatchWidgetUri(intent.data)
+    }
+
+    private fun dispatchWidgetUri(uri: Uri?) {
+        if (uri == null ||
+            uri.scheme != "notizapp" ||
+            uri.host !in setOf("note", "actions", "new-note", "home")
+        ) {
+            return
+        }
+        val value = uri.toString()
+        if (widgetChannelReady) {
+            widgetUriChannel?.invokeMethod("openWidgetUri", value)
+        } else {
+            pendingWidgetUri = value
+        }
     }
 
     // Android 9 und älter: app-eigener Ordner (Downloads bräuchte dort eine Berechtigung)
