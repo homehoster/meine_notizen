@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/task_doc.dart';
 
-const kAddToListLabel = 'Zur Liste hinzufügen';
-
 /// Gemeinsamer Zustand für das Bearbeiten von Listeneinträgen innerhalb einer Notiz.
 class TaskEditCtx {
   /// Eben neu angelegter Eintrag (noch nicht bestätigt) – nur für ihn gibt es Vorschläge.
@@ -83,13 +81,6 @@ class _TaskSegViewState extends State<TaskSegView> {
     _changed();
   }
 
-  void _addRoot() {
-    final t = Task('');
-    widget.seg.roots.add(t);
-    edit.fresh = t;
-    _changed();
-  }
-
   List<Widget> _doneRows(Task t, int depth) => [
         if (hasDoneTask(t))
           ListTile(
@@ -114,12 +105,11 @@ class _TaskSegViewState extends State<TaskSegView> {
 
   @override
   Widget build(BuildContext context) {
-    final done = widget.seg.roots.where(hasDoneTask).toList();
-    final doneCount = _countDone(widget.seg.roots);
+    final isTaskList = widget.seg.type == TaskListType.task;
+    final done = isTaskList ? widget.seg.roots.where(hasDoneTask).toList() : <Task>[];
+    final doneCount = isTaskList ? _countDone(widget.seg.roots) : 0;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _Level(tasks: widget.seg.roots, host: this),
-      TextButton.icon(
-          onPressed: _addRoot, icon: const Icon(Icons.add), label: const Text(kAddToListLabel)),
       if (done.isNotEmpty)
         ExpansionTile(
           key: ObjectKey(widget.seg),
@@ -226,11 +216,19 @@ class _TaskRowState extends State<_TaskRow> {
             index: widget.index,
             child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(Icons.drag_indicator))),
-        Checkbox(
-          tristate: true,
-          value: t.done ? true : anyDone ? null : false,
-          onChanged: (_) => host._toggle(t),
-        ),
+        if (host.widget.seg.type == TaskListType.task)
+          Checkbox(
+            tristate: true,
+            value: t.done ? true : anyDone ? null : false,
+            onChanged: (_) => host._toggle(t),
+          )
+        else
+          SizedBox(
+            width: 48,
+            child: Center(
+              child: Text(host.widget.seg.type == TaskListType.numbered ? '${widget.index + 1}.' : '-'),
+            ),
+          ),
         Expanded(
           child: TextField(
             controller: _c,

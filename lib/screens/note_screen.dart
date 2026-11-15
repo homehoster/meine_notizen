@@ -74,17 +74,46 @@ class _NoteScreenState extends State<NoteScreen> {
     _changed();
   }
 
-  void _addTask() {
+  void _addListItem(TaskListType type) {
     final t = Task('');
     setState(() {
-      if (segs.isNotEmpty && segs.last is TaskSeg) {
+      if (segs.isNotEmpty && segs.last is TaskSeg && (segs.last as TaskSeg).type == type) {
         (segs.last as TaskSeg).roots.add(t);
       } else {
-        segs.add(TaskSeg([t]));
+        segs.add(TaskSeg([t], type: type));
       }
       edit.fresh = t;
     });
     _changed();
+  }
+
+  Future<void> _showAddMenu() async {
+    final type = await showModalBottomSheet<TaskListType>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.check_box_outlined),
+              title: const Text('Aufgabe hinzufügen'),
+              onTap: () => Navigator.pop(context, TaskListType.task),
+            ),
+            ListTile(
+              leading: const Icon(Icons.format_list_bulleted),
+              title: const Text('Aufzählung hinzufügen'),
+              onTap: () => Navigator.pop(context, TaskListType.bullet),
+            ),
+            ListTile(
+              leading: const Icon(Icons.format_list_numbered),
+              title: const Text('Nummerierung hinzufügen'),
+              onTap: () => Navigator.pop(context, TaskListType.numbered),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (type != null && mounted) _addListItem(type);
   }
 
   void _wrap(String a, String b) {
@@ -174,8 +203,6 @@ class _NoteScreenState extends State<NoteScreen> {
 
   Widget _body() {
     if (mode == 0) {
-      final shown = segs.where((x) => x is! TextSeg || x.text.trim().isNotEmpty).toList();
-      final lastIsTasks = shown.isNotEmpty && shown.last is TaskSeg;
       return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 96), children: [
         for (final seg in segs)
           if (seg is TextSeg)
@@ -192,12 +219,6 @@ class _NoteScreenState extends State<NoteScreen> {
           else
             TaskSegView(
                 key: ObjectKey(seg), seg: seg as TaskSeg, edit: edit, onChanged: _changed),
-        // Endet die Notiz nicht mit einer Liste, gibt es trotzdem immer einen Hinzufügen-Button.
-        if (!lastIsTasks)
-          TextButton.icon(
-              onPressed: _addTask,
-              icon: const Icon(Icons.add),
-              label: const Text(kAddToListLabel)),
       ]);
     }
     return Column(children: [
@@ -261,6 +282,13 @@ class _NoteScreenState extends State<NoteScreen> {
         ),
         Expanded(child: _body()),
       ]),
+      floatingActionButton: mode == 0
+          ? FloatingActionButton(
+              onPressed: _showAddMenu,
+              tooltip: 'Eintrag hinzufügen',
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 }

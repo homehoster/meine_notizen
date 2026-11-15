@@ -6,6 +6,8 @@ class Task {
   Task(this.text, {this.done = false, List<Task>? children}) : children = children ?? [];
 }
 
+enum TaskListType { task, bullet, numbered }
+
 abstract class Segment {}
 
 class TextSeg extends Segment {
@@ -14,11 +16,14 @@ class TextSeg extends Segment {
 }
 
 class TaskSeg extends Segment {
+  TaskListType type;
   List<Task> roots;
-  TaskSeg(this.roots);
+  TaskSeg(this.roots, {this.type = TaskListType.task});
 }
 
 final _taskRe = RegExp(r'^(\s*)[-*] \[([ xX])\] ?(.*)$');
+final _bulletRe = RegExp(r'^(\s*)[-*] +(.*)$');
+final _numberedRe = RegExp(r'^(\s*)\d+\. +(.*)$');
 
 int _level(String ws) => ws.replaceAll('\t', '  ').length ~/ 2;
 
@@ -36,16 +41,26 @@ List<Segment> parseDoc(String content) {
   }
 
   for (final line in content.split('\n')) {
-    final m = _taskRe.firstMatch(line);
-    if (m != null) {
+    final taskMatch = _taskRe.firstMatch(line);
+    final bulletMatch = taskMatch == null ? _bulletRe.firstMatch(line) : null;
+    final numberedMatch =
+        taskMatch == null && bulletMatch == null ? _numberedRe.firstMatch(line) : null;
+    if (taskMatch != null || bulletMatch != null || numberedMatch != null) {
       flush();
-      if (cur == null) {
-        cur = TaskSeg([]);
+      final type = taskMatch != null
+          ? TaskListType.task
+          : bulletMatch != null
+              ? TaskListType.bullet
+              : TaskListType.numbered;
+      if (cur == null || cur.type != type) {
+        cur = TaskSeg([], type: type);
         segs.add(cur);
         stack.clear();
       }
-      final indent = _level(m.group(1)!);
-      final t = Task(m.group(3)!, done: m.group(2) != ' ');
+      final match = taskMatch ?? bulletMatch ?? numberedMatch!;
+      final indent = _level(match.group(1)!);
+      final text = taskMatch != null ? taskMatch.group(3)! : match.group(2)!;
+      final t = Task(text, done: taskMatch != null && taskMatch.group(2) != ' ');
       while (stack.isNotEmpty && stack.last.key >= indent) {
         stack.removeLast();
       }
@@ -64,11 +79,23 @@ List<Segment> parseDoc(String content) {
   return segs;
 }
 
-String _tasksToMd(List<Task> ts, int d) => ts
-    .where((t) => t.text.trim().isNotEmpty || t.children.isNotEmpty)
-    .map((t) =>
-        '${'  ' * d}- [${t.done ? 'x' : ' '}] ${t.text}${t.children.isEmpty ? '' : '\n${_tasksToMd(t.children, d + 1)}'}')
-    .join('\n');
+String _tasksToMd(List<Task> ts, int d, TaskListType type) {
+  final lines = <String>[];
+  var number = 0;
+  for (final t in ts) {
+    if (t.text.trim().isEmpty && t.children.isEmpty) continue;
+    number++;
+    final marker = switch (type) {
+      TaskListType.task => '- [${t.done ? 'x' : ' '}]',
+      TaskListType.bullet => '-',
+      TaskListType.numbered => '$number.',
+    };
+    final children =
+        t.children.isEmpty ? '' : '\n${_tasksToMd(t.children, d + 1, type)}';
+    lines.add('${'  ' * d}$marker ${t.text}$children');
+  }
+  return lines.join('\n');
+}
 
 String serializeDoc(List<Segment> segs) {
   final parts = <String>[];
@@ -76,7 +103,8 @@ String serializeDoc(List<Segment> segs) {
     if (s is TextSeg) {
       parts.add(s.text);
     } else {
-      final md = _tasksToMd((s as TaskSeg).roots, 0);
+      final taskSeg = s as TaskSeg;
+      final md = _tasksToMd(taskSeg.roots, 0, taskSeg.type);
       if (md.isNotEmpty) parts.add(md);
     }
   }
@@ -104,7 +132,7 @@ List<Task> findTasks(List<Segment> segs, String query, {Task? exclude}) {
   }
 
   for (final s in segs) {
-    if (s is TaskSeg) walk(s.roots);
+    if (s is TaskSeg && s.type == TaskListType.task) walk(s.roots);
   }
   return out;
 }
