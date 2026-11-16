@@ -156,7 +156,15 @@ class HomeScreen extends StatelessWidget {
                                           child: Text(s.widgetIds.contains(n.id)
                                               ? 'Aus Widget entfernen'
                                               : 'Im Widget anzeigen')),
-                                      const PopupMenuItem(value: 'd', child: Text('Löschen')),
+                                      PopupMenuItem(
+                                        value: 'd',
+                                        child: Text(
+                                          'Löschen',
+                                          style: TextStyle(
+                                            color: Theme.of(context).colorScheme.error,
+                                          ),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   if (n.dirty) const Icon(Icons.cloud_off, size: 18),

@@ -52,7 +52,7 @@ flutter_launcher_icons:
   image_path: "asset/icon/icon_professional_cold.png"
 
   # Android Adaptive Icon
-  adaptive_icon_background: "#EAF1F8"
+  adaptive_icon_background: "#1565C0"
   adaptive_icon_foreground: "asset/icon/icon_professional_cold.png"
   adaptive_icon_foreground_inset: 0
 

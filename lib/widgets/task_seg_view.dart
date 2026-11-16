@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../models/task_doc.dart';
 
 /// Gemeinsamer Zustand für das Bearbeiten von Listeneinträgen innerhalb einer Notiz.
@@ -23,7 +24,12 @@ class TaskSegView extends StatefulWidget {
   final TaskSeg seg;
   final TaskEditCtx edit;
   final VoidCallback onChanged;
-  const TaskSegView({super.key, required this.seg, required this.edit, required this.onChanged});
+  const TaskSegView({
+    super.key,
+    required this.seg,
+    required this.edit,
+    required this.onChanged,
+  });
 
   @override
   State<TaskSegView> createState() => _TaskSegViewState();
@@ -82,41 +88,51 @@ class _TaskSegViewState extends State<TaskSegView> {
   }
 
   List<Widget> _doneRows(Task t, int depth) => [
-        if (hasDoneTask(t))
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.only(left: 16.0 + depth * 24, right: 16),
-            leading: Checkbox(
-              tristate: true,
-              value: t.done ? true : t.children.any(hasDoneTask) ? null : false,
-              onChanged: (_) => _toggle(t),
-            ),
-            title: Text(
-              t.text,
-              style: t.done
-                  ? TextStyle(
-                      decoration: TextDecoration.lineThrough,
-                      color: Theme.of(context).disabledColor)
-                  : null,
-            ),
-          ),
-        for (final c in t.children) ..._doneRows(c, depth + 1),
-      ];
+    if (hasDoneTask(t))
+      ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.only(left: 16.0 + depth * 24, right: 16),
+        leading: Checkbox(
+          tristate: true,
+          value: t.done
+              ? true
+              : t.children.any(hasDoneTask)
+              ? null
+              : false,
+          onChanged: (_) => _toggle(t),
+        ),
+        title: Text(
+          t.text,
+          style: t.done
+              ? TextStyle(
+                  decoration: TextDecoration.lineThrough,
+                  color: Theme.of(context).disabledColor,
+                )
+              : null,
+        ),
+      ),
+    for (final c in t.children) ..._doneRows(c, depth + 1),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final isTaskList = widget.seg.type == TaskListType.task;
-    final done = isTaskList ? widget.seg.roots.where(hasDoneTask).toList() : <Task>[];
+    final done = isTaskList
+        ? widget.seg.roots.where(hasDoneTask).toList()
+        : <Task>[];
     final doneCount = isTaskList ? _countDone(widget.seg.roots) : 0;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _Level(tasks: widget.seg.roots, host: this),
-      if (done.isNotEmpty)
-        ExpansionTile(
-          key: ObjectKey(widget.seg),
-          title: Text('Erledigt ($doneCount)'),
-          children: [for (final t in done) ..._doneRows(t, 0)],
-        ),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Level(tasks: widget.seg.roots, host: this),
+        if (done.isNotEmpty)
+          ExpansionTile(
+            key: ObjectKey(widget.seg),
+            title: Text('Erledigt ($doneCount)'),
+            children: [for (final t in done) ..._doneRows(t, 0)],
+          ),
+      ],
+    );
   }
 }
 
@@ -162,15 +178,21 @@ class _TaskRow extends StatefulWidget {
   final List<Task> siblings;
   final int index;
   final _TaskSegViewState host;
-  const _TaskRow(
-      {required this.task, required this.siblings, required this.index, required this.host});
+  const _TaskRow({
+    required this.task,
+    required this.siblings,
+    required this.index,
+    required this.host,
+  });
 
   @override
   State<_TaskRow> createState() => _TaskRowState();
 }
 
 class _TaskRowState extends State<_TaskRow> {
-  late final TextEditingController _c = TextEditingController(text: widget.task.text);
+  late final TextEditingController _c = TextEditingController(
+    text: widget.task.text,
+  );
   final FocusNode _f = FocusNode();
 
   @override
@@ -210,88 +232,131 @@ class _TaskRowState extends State<_TaskRow> {
         ? findTasks(host.edit.segments(), t.text, exclude: t).take(4).toList()
         : const <Task>[];
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        ReorderableDragStartListener(
-            index: widget.index,
-            child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(Icons.drag_indicator))),
-        if (host.widget.seg.type == TaskListType.task)
-          Checkbox(
-            tristate: true,
-            value: t.done ? true : anyDone ? null : false,
-            onChanged: (_) => host._toggle(t),
-          )
-        else
-          SizedBox(
-            width: 48,
-            child: Center(
-              child: Text(host.widget.seg.type == TaskListType.numbered ? '${widget.index + 1}.' : '-'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            ReorderableDragStartListener(
+              index: widget.index,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6),
+                child: Icon(Icons.drag_indicator),
+              ),
             ),
-          ),
-        Expanded(
-          child: TextField(
-            controller: _c,
-            focusNode: _f,
-            maxLines: null,
-            keyboardType: TextInputType.text,
-            textInputAction: TextInputAction.done,
-            inputFormatters: [FilteringTextInputFormatter.deny('\n')],
-            decoration: const InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              hintText: 'Neuer Eintrag',
-              contentPadding: EdgeInsets.symmetric(vertical: 10),
+            if (host.widget.seg.type == TaskListType.task)
+              Checkbox(
+                tristate: true,
+                value: t.done
+                    ? true
+                    : anyDone
+                    ? null
+                    : false,
+                onChanged: (_) => host._toggle(t),
+              )
+            else
+              SizedBox(
+                width: 48,
+                child: Center(
+                  child: Text(
+                    host.widget.seg.type == TaskListType.numbered
+                        ? '${widget.index + 1}.'
+                        : '-',
+                  ),
+                ),
+              ),
+            Expanded(
+              child: TextField(
+                controller: _c,
+                focusNode: _f,
+                maxLines: null,
+                keyboardType: TextInputType.text,
+                textInputAction: TextInputAction.done,
+                inputFormatters: [FilteringTextInputFormatter.deny('\n')],
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  hintText: 'Neuer Eintrag',
+                  contentPadding: EdgeInsets.symmetric(vertical: 10),
+                ),
+                onChanged: (v) {
+                  t.text = v;
+                  host._typed();
+                },
+                onSubmitted: (_) => _f.unfocus(),
+                onTapOutside: (_) => _f.unfocus(),
+              ),
             ),
-            onChanged: (v) {
-              t.text = v;
-              host._typed();
-            },
-            onSubmitted: (_) => _f.unfocus(),
-            onTapOutside: (_) => _f.unfocus(),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.add),
-          tooltip: 'Aufgabe auf dieser Ebene hinzufügen',
-          onPressed: () => host._addSibling(widget.siblings, t),
-        ),
-        PopupMenuButton<String>(
-          onSelected: (v) {
-            if (v == 'c') host._addChild(t);
-            if (v == 'd') host._delete(t);
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'c', child: Text('Unteraufgabe hinzufügen')),
-            PopupMenuItem(value: 'd', child: Text('Löschen')),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Aufgabe auf dieser Ebene hinzufügen',
+              onPressed: () => host._addSibling(widget.siblings, t),
+            ),
+            PopupMenuButton<String>(
+              onSelected: (v) {
+                if (v == 'c') host._addChild(t);
+                if (v == 'd') host._delete(t);
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'c',
+                  child: Text('Unteraufgabe hinzufügen'),
+                ),
+                PopupMenuItem(
+                  value: 'd',
+                  child: Text(
+                    'Löschen',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
-      ]),
-      if (matches.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(left: 56, right: 8, bottom: 4),
-          // Taps hier zählen als "im Textfeld", der Fokus bleibt erhalten.
-          child: TextFieldTapRegion(
-            child: Card(
-              margin: EdgeInsets.zero,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: Text('Bereits vorhanden – antippen statt neu anlegen',
-                      style: Theme.of(context).textTheme.labelSmall),
+        if (matches.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 56, right: 8, bottom: 4),
+            // Taps hier zählen als "im Textfeld", der Fokus bleibt erhalten.
+            child: TextFieldTapRegion(
+              child: Card(
+                margin: EdgeInsets.zero,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                      child: Text(
+                        'Bereits vorhanden – antippen statt neu anlegen',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                    for (final m in matches)
+                      ListTile(
+                        dense: true,
+                        leading: Icon(
+                          m.done
+                              ? Icons.check_box
+                              : Icons.check_box_outline_blank,
+                          size: 20,
+                        ),
+                        title: Text(
+                          m.text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: m.done
+                            ? const Text('erledigt – wird wieder geöffnet')
+                            : null,
+                        onTap: () => host.edit.reuse(t, m),
+                      ),
+                  ],
                 ),
-                for (final m in matches)
-                  ListTile(
-                    dense: true,
-                    leading: Icon(m.done ? Icons.check_box : Icons.check_box_outline_blank, size: 20),
-                    title: Text(m.text, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: m.done ? const Text('erledigt – wird wieder geöffnet') : null,
-                    onTap: () => host.edit.reuse(t, m),
-                  ),
-              ]),
+              ),
             ),
           ),
-        ),
-    ]);
+      ],
+    );
   }
 }

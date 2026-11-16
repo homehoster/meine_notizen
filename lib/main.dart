@@ -10,6 +10,8 @@ import 'state/app_state.dart';
 final navKey = GlobalKey<NavigatorState>();
 const _widgetChannel =
     MethodChannel('com.github.homehoster.meine_notizen/widget');
+const _seedColor = Color(0xFF1565C0);
+const _secondaryColor = Color(0xFFF59E0B);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -123,13 +125,33 @@ class _NotizAppState extends State<NotizApp> with WidgetsBindingObserver {
       navigatorKey: navKey,
       title: 'Notizen',
       themeMode: s.themeMode,
-      theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-      darkTheme: ThemeData(
-        colorSchemeSeed: Colors.teal,
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
       home: const HomeScreen(),
     );
   }
+}
+
+ThemeData _buildTheme(Brightness brightness) {
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: _seedColor,
+    brightness: brightness,
+  ).copyWith(secondary: _secondaryColor);
+
+  return ThemeData(
+    colorScheme: colorScheme,
+    useMaterial3: true,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: _seedColor,
+      foregroundColor: Colors.white,
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: _seedColor,
+      foregroundColor: Colors.white,
+    ),
+    cardTheme: CardThemeData(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+  );
 }
