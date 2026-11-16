@@ -5,7 +5,7 @@ import '../models/note.dart';
 import '../models/task_doc.dart';
 import '../state/app_state.dart';
 import 'note_screen.dart';
-import 'settings_screen.dart';
+import 'settings_screen.dart'; 
 
 void openNote(BuildContext c, Note n) =>
     Navigator.of(c).push(MaterialPageRoute(builder: (_) => NoteScreen(note: n)));
