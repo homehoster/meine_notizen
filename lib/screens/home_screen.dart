@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
 import '../models/note.dart';
 import '../models/task_doc.dart';
 import '../state/app_state.dart';
+import '../widgets/markdown_image_blocker.dart';
 import 'note_screen.dart';
 import 'settings_screen.dart'; 
 
@@ -233,7 +234,11 @@ class _NotePreview extends StatelessWidget {
         ),
       for (final seg in parseDoc(shown.join('\n')))
         if (seg is TextSeg)
-          MarkdownBody(data: seg.text, softLineBreak: true)
+          MarkdownBody(
+            data: seg.text,
+            softLineBreak: true,
+            imageBuilder: blockedMarkdownImage,
+          )
         else
           _TaskPreview(tasks: (seg as TaskSeg).roots, depth: 0),
       if (rest.length > 5) Text('…', style: theme.textTheme.bodyMedium),

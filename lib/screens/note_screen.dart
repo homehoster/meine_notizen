@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/note.dart';
 import '../models/task_doc.dart';
 import '../state/app_state.dart';
+import '../widgets/markdown_image_blocker.dart';
 import '../widgets/task_seg_view.dart';
 
 class NoteScreen extends StatefulWidget {
@@ -239,6 +240,7 @@ class _NoteScreenState extends State<NoteScreen> {
                 : MarkdownBody(
                     data: seg.text,
                     onTapLink: (t, href, title) => _openLink(href),
+                    imageBuilder: blockedMarkdownImage,
                   ))
           else
             TaskSegView(
