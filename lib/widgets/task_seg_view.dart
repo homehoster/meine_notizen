@@ -12,7 +12,7 @@ class TaskEditCtx {
   final List<Segment> Function() segments;
 
   /// Vorhandenen Eintrag statt eines neuen verwenden.
-  final void Function(Task fresh, Task existing) reuse; 
+  final void Function(Task fresh, Task existing) reuse;
 
   TaskEditCtx({required this.segments, required this.reuse});
 }
