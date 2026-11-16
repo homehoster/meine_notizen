@@ -24,6 +24,7 @@ class AppState extends ChangeNotifier {
   String baseUrl = '';
   String token = '';
   ThemeMode themeMode = ThemeMode.system;
+  bool blockMarkdownImages = true;
   List<Note> notes = [];
   Set<String> widgetIds = {};
   bool syncing = false;
@@ -59,6 +60,7 @@ class AppState extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     baseUrl = p.getString('url') ?? '';
     themeMode = ThemeMode.values[p.getInt('theme') ?? 0];
+    blockMarkdownImages = p.getBool('blockMarkdownImages') ?? true;
     logEnabled = p.getBool('log') ?? false;
     LogService.setEnabled(logEnabled);
     token = await _secure.read(key: 'token') ?? '';
@@ -107,6 +109,13 @@ class AppState extends ChangeNotifier {
     themeMode = m;
     final p = await SharedPreferences.getInstance();
     await p.setInt('theme', m.index);
+    notifyListeners();
+  }
+
+  Future<void> setBlockMarkdownImages(bool value) async {
+    blockMarkdownImages = value;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('blockMarkdownImages', value);
     notifyListeners();
   }
 

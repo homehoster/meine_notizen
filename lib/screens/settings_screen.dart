@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../services/log.dart';
 import '../state/app_state.dart';
 
@@ -41,8 +42,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final next = t.startsWith('http://')
         ? false
         : t.startsWith('https://')
-            ? true
-            : https;
+        ? true
+        : https;
     if (next != https) setState(() => https = next);
   }
 
@@ -57,7 +58,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _withScheme(String raw) {
     final t = raw.replaceAll(RegExp(r'\s+'), '');
     if (_schemeRe.hasMatch(t)) {
-      return t.replaceFirstMapped(_schemeRe, (m) => '${m[1]!.toLowerCase()}://');
+      return t.replaceFirstMapped(
+        _schemeRe,
+        (m) => '${m[1]!.toLowerCase()}://',
+      );
     }
     return '${https ? 'https' : 'http'}://$t';
   }
@@ -70,7 +74,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final u = _withScheme(url.text);
       await s.testConnection(u, token.text);
       await s.saveSettings(u, token.text);
-      msg.showSnackBar(const SnackBar(content: Text('Verbunden & gespeichert')));
+      msg.showSnackBar(
+        const SnackBar(content: Text('Verbunden & gespeichert')),
+      );
     } catch (e) {
       msg.showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
@@ -89,8 +95,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'Lokal gespeicherte Notizen bleiben erhalten, werden aber nicht mehr synchronisiert.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Löschen')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
         ],
       ),
     );
@@ -100,7 +112,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => https = true);
     url.text = 'https://';
     token.clear();
-    msg.showSnackBar(const SnackBar(content: Text('Server-URL und Token gelöscht')));
+    msg.showSnackBar(
+      const SnackBar(content: Text('Server-URL und Token gelöscht')),
+    );
   }
 
   @override
@@ -109,84 +123,119 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Einstellungen')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('HTTPS verwenden'),
-          subtitle: Text(https ? 'Verschlüsselte Verbindung (empfohlen)' : 'Unverschlüsselt (HTTP)'),
-          value: https,
-          onChanged: _setHttps,
-        ),
-        if (!https)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.warning_amber_rounded, size: 20, color: scheme.error),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Token und Notizen werden im Klartext übertragen und können mitgelesen werden. '
-                  'Nur in vertrauenswürdigen Netzwerken (z. B. Heimnetz) verwenden.',
-                  style: TextStyle(color: scheme.error),
-                ),
-              ),
-            ]),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('HTTPS verwenden'),
+            subtitle: Text(
+              https
+                  ? 'Verschlüsselte Verbindung (empfohlen)'
+                  : 'Unverschlüsselt (HTTP)',
+            ),
+            value: https,
+            onChanged: _setHttps,
           ),
-        TextField(
-          controller: url,
-          keyboardType: TextInputType.url,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: const InputDecoration(
-              labelText: 'Server-URL', hintText: 'https://memos.example.com'),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: token,
-          obscureText: true,
-          enableSuggestions: false,
-          autocorrect: false,
-          decoration: const InputDecoration(labelText: 'Access Token (Memos → Settings → My Account)'),
-        ),
-        const SizedBox(height: 16),
-        FilledButton(
-            onPressed: busy ? null : _save, child: Text(busy ? 'Prüfe …' : 'Testen & speichern')),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.delete_outline),
-          label: const Text('Server-URL & Token löschen'),
-          onPressed: busy ? null : _clear,
-        ),
-        const SizedBox(height: 32),
-        const Text('Darstellung'),
-        const SizedBox(height: 8),
-        SegmentedButton<ThemeMode>(
-          segments: const [
-            ButtonSegment(value: ThemeMode.system, label: Text('System')),
-            ButtonSegment(value: ThemeMode.light, label: Text('Hell')),
-            ButtonSegment(value: ThemeMode.dark, label: Text('Dunkel')),
-          ],
-          selected: {s.themeMode},
-          onSelectionChanged: (v) => s.setTheme(v.first),
-        ),
-        const SizedBox(height: 24),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Logging aktivieren'),
-          subtitle: const Text('Schreibt Sync- und Fehlerprotokolle (max. 5 MB, nur in der App gespeichert)'),
-          value: s.logEnabled,
-          onChanged: s.setLogEnabled,
-        ),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.share),
-          label: const Text('Log teilen'),
-          onPressed: () async {
-            final msg = ScaffoldMessenger.of(context);
-            final ok = await LogService.share();
-            if (!ok) msg.showSnackBar(const SnackBar(content: Text('Noch keine Logs vorhanden')));
-          },
-        ),
-      ]),
+          if (!https)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 20,
+                    color: scheme.error,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Token und Notizen werden im Klartext übertragen und können mitgelesen werden. '
+                      'Nur in vertrauenswürdigen Netzwerken (z. B. Heimnetz) verwenden.',
+                      style: TextStyle(color: scheme.error),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          TextField(
+            controller: url,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: const InputDecoration(
+              labelText: 'Server-URL',
+              hintText: 'https://memos.example.com',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: token,
+            obscureText: true,
+            enableSuggestions: false,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'Access Token (Memos → Settings → My Account)',
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: busy ? null : _save,
+            child: Text(busy ? 'Prüfe …' : 'Testen & speichern'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Server-URL & Token löschen'),
+            onPressed: busy ? null : _clear,
+          ),
+          const SizedBox(height: 32),
+          const Text('Darstellung'),
+          const SizedBox(height: 8),
+          SegmentedButton<ThemeMode>(
+            segments: const [
+              ButtonSegment(value: ThemeMode.system, label: Text('System')),
+              ButtonSegment(value: ThemeMode.light, label: Text('Hell')),
+              ButtonSegment(value: ThemeMode.dark, label: Text('Dunkel')),
+            ],
+            selected: {s.themeMode},
+            onSelectionChanged: (v) => s.setTheme(v.first),
+          ),
+          const SizedBox(height: 24),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Markdown-Bilder blockieren'),
+            subtitle: const Text(
+              'Verhindert, dass eingebettete Bilder automatisch geladen werden',
+            ),
+            value: s.blockMarkdownImages,
+            onChanged: s.setBlockMarkdownImages,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Logging aktivieren'),
+            subtitle: const Text(
+              'Schreibt Sync- und Fehlerprotokolle (max. 5 MB, nur in der App gespeichert)',
+            ),
+            value: s.logEnabled,
+            onChanged: s.setLogEnabled,
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.share),
+            label: const Text('Log teilen'),
+            onPressed: () async {
+              final msg = ScaffoldMessenger.of(context);
+              final ok = await LogService.share();
+              if (!ok) {
+                msg.showSnackBar(
+                  const SnackBar(content: Text('Noch keine Logs vorhanden')),
+                );
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 }

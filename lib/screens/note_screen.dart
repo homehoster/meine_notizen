@@ -1,8 +1,10 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../models/note.dart';
 import '../models/task_doc.dart';
 import '../state/app_state.dart';
@@ -57,24 +59,37 @@ class _NoteScreenState extends State<NoteScreen> {
   Future<void> _openLink(String? href) async {
     final msg = ScaffoldMessenger.of(context);
     final uri = href == null ? null : Uri.tryParse(href.trim());
-    if (uri == null || !const {'http', 'https', 'mailto'}.contains(uri.scheme)) {
-      msg.showSnackBar(const SnackBar(
-          content: Text('Dieser Link-Typ wird aus Sicherheitsgründen nicht geöffnet')));
+    if (uri == null ||
+        !const {'http', 'https', 'mailto'}.contains(uri.scheme)) {
+      msg.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Dieser Link-Typ wird aus Sicherheitsgründen nicht geöffnet',
+          ),
+        ),
+      );
       return;
     }
     try {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok) {
-        msg.showSnackBar(const SnackBar(content: Text('Link konnte nicht geöffnet werden')));
+        msg.showSnackBar(
+          const SnackBar(content: Text('Link konnte nicht geöffnet werden')),
+        );
       }
     } catch (_) {
-      msg.showSnackBar(const SnackBar(content: Text('Link konnte nicht geöffnet werden')));
+      msg.showSnackBar(
+        const SnackBar(content: Text('Link konnte nicht geöffnet werden')),
+      );
     }
   }
 
   void _schedule() {
     _t?.cancel();
-    _t = Timer(const Duration(milliseconds: 600), () => s.saveContent(widget.note, c.text));
+    _t = Timer(
+      const Duration(milliseconds: 600),
+      () => s.saveContent(widget.note, c.text),
+    );
   }
 
   void _changed() {
@@ -106,7 +121,9 @@ class _NoteScreenState extends State<NoteScreen> {
   void _addListItem(TaskListType type) {
     final t = Task('');
     setState(() {
-      if (segs.isNotEmpty && segs.last is TaskSeg && (segs.last as TaskSeg).type == type) {
+      if (segs.isNotEmpty &&
+          segs.last is TaskSeg &&
+          (segs.last as TaskSeg).type == type) {
         (segs.last as TaskSeg).roots.add(t);
       } else {
         segs.add(TaskSeg([t], type: type));
@@ -155,7 +172,9 @@ class _NoteScreenState extends State<NoteScreen> {
       c.value = TextEditingValue(
         text: t.replaceRange(sel.start, sel.end, '$a$mid$b'),
         selection: TextSelection(
-            baseOffset: sel.start + a.length, extentOffset: sel.start + a.length + mid.length),
+          baseOffset: sel.start + a.length,
+          extentOffset: sel.start + a.length + mid.length,
+        ),
       );
     }
     _schedule();
@@ -183,7 +202,9 @@ class _NoteScreenState extends State<NoteScreen> {
     final m = RegExp(r'^#{1,6}\s*').firstMatch(line);
     final stripped = m == null ? line : line.substring(m.end);
     final newLine = '${level == 0 ? '' : '${'#' * level} '}$stripped';
-    final offset = (pos + newLine.length - line.length).clamp(ls, ls + newLine.length).toInt();
+    final offset = (pos + newLine.length - line.length)
+        .clamp(ls, ls + newLine.length)
+        .toInt();
     c.value = TextEditingValue(
       text: t.replaceRange(ls, le, newLine),
       selection: TextSelection.collapsed(offset: offset),
@@ -194,88 +215,115 @@ class _NoteScreenState extends State<NoteScreen> {
   Widget _toolbar() {
     Widget b(IconData i, String tip, VoidCallback f) =>
         IconButton(icon: Icon(i), tooltip: tip, onPressed: f);
-    Widget h(String label, String tip, VoidCallback f, {bool bold = true}) => Tooltip(
+    Widget h(String label, String tip, VoidCallback f, {bool bold = true}) =>
+        Tooltip(
           message: tip,
           child: TextButton(
             style: TextButton.styleFrom(
-                minimumSize: const Size(44, 44), padding: const EdgeInsets.symmetric(horizontal: 10)),
+              minimumSize: const Size(44, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+            ),
             onPressed: f,
-            child: Text(label,
-                style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
           ),
         );
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(children: [
-        ValueListenableBuilder<UndoHistoryValue>(
-          valueListenable: _undo,
-          builder: (_, v, _) => IconButton(
-            icon: const Icon(Icons.undo),
-            tooltip: 'Rückgängig',
-            onPressed: v.canUndo ? _undo.undo : null,
+      child: Row(
+        children: [
+          ValueListenableBuilder<UndoHistoryValue>(
+            valueListenable: _undo,
+            builder: (_, v, _) => IconButton(
+              icon: const Icon(Icons.undo),
+              tooltip: 'Rückgängig',
+              onPressed: v.canUndo ? _undo.undo : null,
+            ),
           ),
-        ),
-        h('H1', 'Überschrift 1', () => _setHeading(1)),
-        h('H2', 'Überschrift 2', () => _setHeading(2)),
-        h('Abc', 'Normaler Text', () => _setHeading(0), bold: false),
-        b(Icons.format_bold, 'Fett', () => _wrap('**', '**')),
-        b(Icons.format_italic, 'Kursiv', () => _wrap('*', '*')),
-        b(Icons.format_list_bulleted, 'Aufzählung', () => _linePrefix('- ')),
-        b(Icons.format_list_numbered, 'Nummeriert', () => _linePrefix('1. ')),
-        b(Icons.check_box_outlined, 'Aufgabe', () => _linePrefix('- [ ] ')),
-        b(Icons.link, 'Link', () => _wrap('[', '](https://)')),
-        b(Icons.code, 'Code', () => _wrap('`', '`')),
-        b(Icons.format_quote, 'Zitat', () => _linePrefix('> ')),
-      ]),
+          h('H1', 'Überschrift 1', () => _setHeading(1)),
+          h('H2', 'Überschrift 2', () => _setHeading(2)),
+          h('Abc', 'Normaler Text', () => _setHeading(0), bold: false),
+          b(Icons.format_bold, 'Fett', () => _wrap('**', '**')),
+          b(Icons.format_italic, 'Kursiv', () => _wrap('*', '*')),
+          b(Icons.format_list_bulleted, 'Aufzählung', () => _linePrefix('- ')),
+          b(Icons.format_list_numbered, 'Nummeriert', () => _linePrefix('1. ')),
+          b(Icons.check_box_outlined, 'Aufgabe', () => _linePrefix('- [ ] ')),
+          b(Icons.link, 'Link', () => _wrap('[', '](https://)')),
+          b(Icons.code, 'Code', () => _wrap('`', '`')),
+          b(Icons.format_quote, 'Zitat', () => _linePrefix('> ')),
+        ],
+      ),
     );
   }
 
-  Widget _body() {
+  Widget _body(bool blockMarkdownImages) {
     if (mode == 0) {
-      return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 96), children: [
-        for (final seg in segs)
-          if (seg is TextSeg)
-            (seg.text.trim().isEmpty
-                ? const SizedBox.shrink()
-                : MarkdownBody(
-                    data: seg.text,
-                    onTapLink: (t, href, title) => _openLink(href),
-                    imageBuilder: blockedMarkdownImage,
-                  ))
-          else
-            TaskSegView(
-                key: ObjectKey(seg), seg: seg as TaskSeg, edit: edit, onChanged: _changed),
-      ]);
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        children: [
+          for (final seg in segs)
+            if (seg is TextSeg)
+              (seg.text.trim().isEmpty
+                  ? const SizedBox.shrink()
+                  : MarkdownBody(
+                      data: seg.text,
+                      onTapLink: (t, href, title) => _openLink(href),
+                      imageBuilder: blockMarkdownImages
+                          ? blockedMarkdownImage
+                          : null,
+                    ))
+            else
+              TaskSegView(
+                key: ObjectKey(seg),
+                seg: seg as TaskSeg,
+                edit: edit,
+                onChanged: _changed,
+              ),
+        ],
+      );
     }
-    return Column(children: [
-      _toolbar(),
-      Expanded(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: TextField(
-            controller: c,
-            undoController: _undo,
-            maxLines: null,
-            expands: true,
-            textAlignVertical: TextAlignVertical.top,
-            onChanged: (_) => _schedule(),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-            decoration:
-                const InputDecoration(border: InputBorder.none, hintText: 'Notiz schreiben …'),
+    return Column(
+      children: [
+        _toolbar(),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              controller: c,
+              undoController: _undo,
+              maxLines: null,
+              expands: true,
+              textAlignVertical: TextAlignVertical.top,
+              onChanged: (_) => _schedule(),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                hintText: 'Notiz schreiben …',
+              ),
+            ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final blockMarkdownImages = context.watch<AppState>().blockMarkdownImages;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.note.isLocal ? 'Neue Notiz' : 'Notiz'),
         actions: [
           IconButton(
-            icon: Icon(s.widgetIds.contains(widget.note.id) ? Icons.widgets : Icons.widgets_outlined),
+            icon: Icon(
+              s.widgetIds.contains(widget.note.id)
+                  ? Icons.widgets
+                  : Icons.widgets_outlined,
+            ),
             tooltip: 'Im Widget anzeigen',
             onPressed: () async {
               await s.toggleWidget(widget.note);
@@ -293,21 +341,31 @@ class _NoteScreenState extends State<NoteScreen> {
           ),
         ],
       ),
-      body: Column(children: [
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: SegmentedButton<int>(
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(value: 0, icon: Icon(Icons.checklist), label: Text('Ansicht')),
-              ButtonSegment(value: 1, icon: Icon(Icons.edit), label: Text('Editor')),
-            ],
-            selected: {mode},
-            onSelectionChanged: (v) => _setMode(v.first),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: SegmentedButton<int>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                  value: 0,
+                  icon: Icon(Icons.checklist),
+                  label: Text('Ansicht'),
+                ),
+                ButtonSegment(
+                  value: 1,
+                  icon: Icon(Icons.edit),
+                  label: Text('Editor'),
+                ),
+              ],
+              selected: {mode},
+              onSelectionChanged: (v) => _setMode(v.first),
+            ),
           ),
-        ),
-        Expanded(child: _body()),
-      ]),
+          Expanded(child: _body(blockMarkdownImages)),
+        ],
+      ),
       floatingActionButton: mode == 0
           ? FloatingActionButton(
               onPressed: _showAddMenu,
@@ -317,4 +375,4 @@ class _NoteScreenState extends State<NoteScreen> {
           : null,
     );
   }
-}
+}
