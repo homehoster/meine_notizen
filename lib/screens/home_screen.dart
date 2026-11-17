@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../models/note.dart';
@@ -342,184 +341,209 @@ Future<void> _chooseNoteSpace(
   await state.assignSpace(note, selectedSpace);
 }
 
+class _DrawerSection {
+  final String title;
+  final IconData icon;
+  final int count;
+  final VoidCallback? onAdd;
+  final Widget Function(BuildContext, int) itemBuilder;
+
+  const _DrawerSection({
+    required this.title,
+    required this.icon,
+    required this.count,
+    required this.itemBuilder,
+    this.onAdd,
+  });
+
+  /// Höhe, die der Abschnitt für alle Einträge bräuchte (Kopf + Zeilen).
+  double get needed => 48.0 + count * 52.0;
+}
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   Widget _buildDrawer(BuildContext context, AppState state) {
-    return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final maxSectionHeight = constraints.maxHeight / 3;
-          final theme = Theme.of(context);
+    final theme = Theme.of(context);
 
-          Widget section({
-            required String title,
-            required IconData icon,
-            required int count,
-            required Widget Function(BuildContext, int) itemBuilder,
-            VoidCallback? onAdd,
-          }) {
-            if (count == 0 && onAdd == null) {
-              return const SizedBox.shrink();
-            }
-            if (count == 0) {
-              return SizedBox(
-                height: 48,
-                child: Row(
-                  children: [
-                    const SizedBox(width: 16),
-                    Icon(icon, size: 20),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(title, style: theme.textTheme.titleSmall),
-                    ),
-                    IconButton(
-                      tooltip: '$title anlegen',
-                      icon: const Icon(Icons.add),
-                      onPressed: onAdd,
-                    ),
-                  ],
+    void select(NavigationTarget target) {
+      state.select(target);
+      Navigator.pop(context);
+    }
+
+    // Abschnittskopf im Stil der Einstellungen: Symbol + Titel in Primärfarbe.
+    Widget sectionHeader(String title, IconData icon, VoidCallback? onAdd) {
+      return SizedBox(
+        height: 48,
+        child: Row(
+          children: [
+            const SizedBox(width: 16),
+            Icon(icon, size: 18, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
                 ),
-              );
-            }
-            final sectionHeight = maxSectionHeight.clamp(76.0, 100000.0);
-            final listHeight = (sectionHeight - 48).clamp(28.0, count * 52.0);
-            return SizedBox(
-              height: 48 + listHeight,
-              child: Column(
+              ),
+            ),
+            if (onAdd != null)
+              IconButton(
+                tooltip: '$title anlegen',
+                icon: const Icon(Icons.add),
+                onPressed: onAdd,
+              ),
+          ],
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Column(
+        children: [
+          SizedBox(
+            height: 112,
+            width: double.infinity,
+            child: DrawerHeader(
+              margin: EdgeInsets.zero,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+              ),
+              child: Row(
                 children: [
-                  SizedBox(
-                    height: 48,
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 16),
-                        Icon(icon, size: 20),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(title, style: theme.textTheme.titleSmall),
-                        ),
-                        if (onAdd != null)
-                          IconButton(
-                            tooltip: '$title anlegen',
-                            icon: const Icon(Icons.add),
-                            onPressed: onAdd,
-                          ),
-                      ],
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset(
+                      'asset/icon/icon_professional_cold.png',
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Icon(
+                        Icons.sticky_note_2_outlined,
+                        size: 40,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
                     ),
                   ),
-                  SizedBox(
-                    height: listHeight,
-                    child: ListView.builder(
-                      padding: EdgeInsets.zero,
-                      itemExtent: 52,
-                      itemCount: count,
-                      itemBuilder: itemBuilder,
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Meine Notizen',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const Text('für UseMemo'),
+                      ],
                     ),
                   ),
                 ],
               ),
-            );
-          }
-
-          void select(NavigationTarget target) {
-            state.select(target);
-            Navigator.pop(context);
-          }
-
-          return SingleChildScrollView(
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 128,
-                  width: double.infinity,
-                  child: DrawerHeader(
-                    margin: EdgeInsets.zero,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                    ),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.asset(
-                            'asset/icon/icon_professional_cold.png',
-                            width: 52,
-                            height: 52,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => Icon(
-                              Icons.sticky_note_2_outlined,
-                              size: 40,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.notes_outlined),
+            title: const Text('Alle Notizen'),
+            selected: state.navigation.kind == NavigationKind.all,
+            onTap: () => select(const NavigationTarget(NavigationKind.all)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.archive_outlined),
+            title: const Text('Archiv'),
+            selected: state.navigation.kind == NavigationKind.archive,
+            onTap: () => select(const NavigationTarget(NavigationKind.archive)),
+          ),
+          const Divider(height: 1),
+          // Mittlerer Bereich: Bereiche, Ansichten und Tags teilen sich den
+          // gesamten Restplatz. Leere Abschnitte geben ihren Platz ab.
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final specs = <_DrawerSection>[
+                  if (state.spacesSupported == true)
+                    _DrawerSection(
+                      title: 'Bereiche',
+                      icon: Icons.folder_open_outlined,
+                      count: state.spaces.length,
+                      onAdd: () => _editSpace(context, state),
+                      itemBuilder: (context, index) {
+                        final space = state.spaces[index];
+                        return ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.only(left: 16),
+                          leading: Text(
+                            space.emoji.isEmpty ? '📁' : space.emoji,
+                            style: const TextStyle(fontSize: 20),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Meine Notizen',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleMedium,
+                          title: Text(
+                            space.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          selected:
+                              state.navigation.kind == NavigationKind.space &&
+                              state.navigation.id == space.id,
+                          onTap: () => select(
+                            NavigationTarget(NavigationKind.space, space.id),
+                          ),
+                          trailing: PopupMenuButton<String>(
+                            tooltip: 'Bereichsoptionen',
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                _editSpace(context, state, space: space);
+                              } else if (value == 'delete') {
+                                _deleteSpace(context, state, space);
+                              }
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Bearbeiten'),
                               ),
-                              const Text('für UseMemo'),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Text('Löschen'),
+                              ),
                             ],
                           ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.notes_outlined),
-                  title: const Text('Alle Notizen'),
-                  selected: state.navigation.kind == NavigationKind.all,
-                  onTap: () =>
-                      select(const NavigationTarget(NavigationKind.all)),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.archive_outlined),
-                  title: const Text('Archiv'),
-                  selected: state.navigation.kind == NavigationKind.archive,
-                  onTap: () =>
-                      select(const NavigationTarget(NavigationKind.archive)),
-                ),
-                const Divider(height: 1),
-                if (state.spacesSupported == true)
-                  section(
-                    title: 'Bereiche',
-                    icon: Icons.folder_open_outlined,
-                    count: state.spaces.length,
-                    onAdd: () => _editSpace(context, state),
+                  _DrawerSection(
+                    title: 'Ansichten',
+                    icon: Icons.tune,
+                    count: state.savedViews.length,
+                    onAdd: () => _editView(context, state),
                     itemBuilder: (context, index) {
-                      final space = state.spaces[index];
+                      final view = state.savedViews[index];
                       return ListTile(
                         dense: true,
-                        leading: Text(
-                          space.emoji.isEmpty ? '📁' : space.emoji,
-                          style: const TextStyle(fontSize: 20),
-                        ),
+                        contentPadding: const EdgeInsets.only(left: 16),
+                        leading: Text(view.icon),
                         title: Text(
-                          space.title,
+                          view.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         selected:
-                            state.navigation.kind == NavigationKind.space &&
-                            state.navigation.id == space.id,
+                            state.navigation.kind == NavigationKind.view &&
+                            state.navigation.id == view.id,
                         onTap: () => select(
-                          NavigationTarget(NavigationKind.space, space.id),
+                          NavigationTarget(NavigationKind.view, view.id),
                         ),
                         trailing: PopupMenuButton<String>(
-                          tooltip: 'Bereichsoptionen',
+                          tooltip: 'Ansichtsoptionen',
                           onSelected: (value) {
                             if (value == 'edit') {
-                              _editSpace(context, state, space: space);
+                              _editView(context, state, view: view);
                             } else if (value == 'delete') {
-                              _deleteSpace(context, state, space);
+                              state.deleteView(view.id);
                             }
                           },
                           itemBuilder: (_) => const [
@@ -536,125 +560,116 @@ class HomeScreen extends StatelessWidget {
                       );
                     },
                   ),
-                section(
-                  title: 'Ansichten',
-                  icon: Icons.tune,
-                  count: state.savedViews.length,
-                  onAdd: () => _editView(context, state),
-                  itemBuilder: (context, index) {
-                    final view = state.savedViews[index];
-                    return ListTile(
-                      dense: true,
-                      leading: Text(view.icon),
-                      title: Text(
-                        view.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      selected:
-                          state.navigation.kind == NavigationKind.view &&
-                          state.navigation.id == view.id,
-                      onTap: () => select(
-                        NavigationTarget(NavigationKind.view, view.id),
-                      ),
-                      trailing: PopupMenuButton<String>(
-                        tooltip: 'Ansichtsoptionen',
-                        onSelected: (value) {
-                          if (value == 'edit') {
-                            _editView(context, state, view: view);
-                          } else if (value == 'delete') {
-                            state.deleteView(view.id);
-                          }
-                        },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Bearbeiten'),
-                          ),
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Löschen'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-                section(
-                  title: 'Tags',
-                  icon: Icons.tag,
-                  count: state.tags.length,
-                  itemBuilder: (context, index) {
-                    final tag = state.tags[index];
-                    return ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.tag, size: 20),
-                      title: Text(tag),
-                      selected:
-                          state.navigation.kind == NavigationKind.tag &&
-                          state.navigation.id == tag,
-                      onTap: () =>
-                          select(NavigationTarget(NavigationKind.tag, tag)),
-                    );
-                  },
-                ),
-                // Einstellungen unten verankert
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.settings_outlined),
-                  title: const Text('Einstellungen'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                    );
-                  },
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: AppVersionText(
-                    showBuild: true,
-                    prefix: 'meine Notizen v',
-                    style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                  _DrawerSection(
+                    title: 'Tags',
+                    icon: Icons.tag,
+                    count: state.tags.length,
+                    itemBuilder: (context, index) {
+                      final tag = state.tags[index];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.tag, size: 20),
+                        title: Text(tag),
+                        selected:
+                            state.navigation.kind == NavigationKind.tag &&
+                            state.navigation.id == tag,
+                        onTap: () =>
+                            select(NavigationTarget(NavigationKind.tag, tag)),
+                      );
+                    },
                   ),
-                ),
+                ].where((x) => x.count > 0 || x.onAdd != null).toList();
 
+                // Platz fair verteilen: kleine Abschnitte bekommen, was sie
+                // brauchen; der Rest geht an die größeren.
+                const minHeight = 48.0 + 52.0 * 2;
+                final order = [...specs]
+                  ..sort((a, b) => a.needed.compareTo(b.needed));
+                final heights = <_DrawerSection, double>{};
+                var remaining = constraints.maxHeight;
+                var left = order.length;
+                for (final spec in order) {
+                  final share = remaining / left;
+                  var height = spec.needed < share ? spec.needed : share;
+                  if (height < minHeight && spec.needed > height) {
+                    height = spec.needed < minHeight ? spec.needed : minHeight;
+                  }
+                  heights[spec] = height;
+                  remaining -= height;
+                  left--;
+                }
 
-
-                // const Divider(height: 1),
-                // SizedBox(
-                //   height: 48,
-                //   child: ListTile(
-                //     dense: true,
-                //     visualDensity: VisualDensity.compact,
-                //     minVerticalPadding: 0,
-                //     leading: const Icon(Icons.settings),
-                //     title: const Text('Einstellungen'),
-                //     onTap: () {
-                //       Navigator.pop(context);
-                //       Navigator.of(context).push(
-                //         MaterialPageRoute(
-                //           builder: (_) => const SettingsScreen(),
-                //         ),
-                //       );
-                //     },
-                //   ),
-                // ),
-                // const SizedBox(
-                //   height: 24,
-                //   child: Padding(
-                //     padding: EdgeInsets.fromLTRB(72, 0, 16, 0),
-                //     child: Align(
-                //       alignment: Alignment.centerLeft,
-                //       child: _AppVersionLabel(),
-                //     ),
-                //   ),
-                // ),
-              ],
+                return SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final spec in specs)
+                        SizedBox(
+                          height: heights[spec],
+                          child: Column(
+                            children: [
+                              sectionHeader(spec.title, spec.icon, spec.onAdd),
+                              if (spec.count > 0)
+                                Expanded(
+                                  child: ListView.builder(
+                                    padding: EdgeInsets.zero,
+                                    itemExtent: 52,
+                                    itemCount: spec.count,
+                                    itemBuilder: spec.itemBuilder,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+          // Unten verankert: eine einzige kompakte Zeile, Version rechts.
+          const Divider(height: 1),
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.settings_outlined),
+            title: const Text('Einstellungen'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: AppVersionText(
+              showBuild: false,
+              prefix: 'meine Notizen v',
+              style: TextStyle(color: Colors.grey[400], fontSize: 11),
+            ),
+          ),
+          // // Unten verankert: eine einzige kompakte Zeile, Version rechts.
+          // const Divider(height: 1),
+          // ListTile(
+          //   dense: true,
+          //   leading: const Icon(Icons.settings_outlined),
+          //   title: const Text('Einstellungen'),
+          //   trailing: AppVersionText(
+          //     showBuild: false,
+          //     prefix: 'v',
+          //     style: theme.textTheme.bodySmall?.copyWith(
+          //       color: theme.colorScheme.outline,
+          //     ),
+          //   ),
+          //   onTap: () {
+          //     Navigator.pop(context);
+          //     Navigator.push(
+          //       context,
+          //       MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          //     );
+          //   },
+          // ),
+        ],
       ),
     );
   }
@@ -831,51 +846,6 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class _AppVersionLabel extends StatefulWidget {
-  const _AppVersionLabel();
-
-  @override
-  State<_AppVersionLabel> createState() => _AppVersionLabelState();
-}
-
-class _AppVersionLabelState extends State<_AppVersionLabel> {
-  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<PackageInfo>(
-    future: _packageInfo,
-    builder: (context, snapshot) {
-      final style = Theme.of(context).textTheme.bodySmall;
-      if (snapshot.hasError) {
-        return Tooltip(
-          message: 'App-Version konnte nicht geladen werden: ${snapshot.error}',
-          child: Text(
-            'Version nicht verfügbar',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: style,
-          ),
-        );
-      }
-      if (!snapshot.hasData) {
-        return Text(
-          'Version wird geladen …',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: style,
-        );
-      }
-      final info = snapshot.data!;
-      return Text(
-        'Version ${info.version}+${info.buildNumber}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: style,
-      );
-    },
-  );
-}
-
 final _headingRe = RegExp(r'^\s*#{1,6}\s+(.*)$');
 final _doneLineRe = RegExp(r'^\s*[-*] \[[xX]\]');
 
@@ -933,7 +903,11 @@ class _NotePreview extends StatelessWidget {
               imageBuilder: blockMarkdownImages ? blockedMarkdownImage : null,
             )
           else
-            _TaskPreview(tasks: (seg as TaskSeg).roots, depth: 0),
+            _TaskPreview(
+              tasks: (seg as TaskSeg).roots,
+              type: seg.type,
+              depth: 0,
+            ),
         if (rest.length > 5) Text('…', style: theme.textTheme.bodyMedium),
         if (heading == null && shown.isEmpty)
           Text(
@@ -947,29 +921,47 @@ class _NotePreview extends StatelessWidget {
   }
 }
 
+/// Zeigt Listeneinträge passend zum Listentyp:
+/// Checkbox nur bei Aufgaben, „•“ bei Aufzählungen, „1.“ bei Nummerierungen.
 class _TaskPreview extends StatelessWidget {
   final List<Task> tasks;
+  final TaskListType type;
   final int depth;
-  const _TaskPreview({required this.tasks, required this.depth});
+  const _TaskPreview({
+    required this.tasks,
+    required this.type,
+    required this.depth,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final t in tasks) ...[
+        for (var index = 0; index < tasks.length; index++) ...[
           Padding(
             padding: EdgeInsets.only(left: depth * 20.0, top: 2, bottom: 2),
             child: Row(
               children: [
-                Icon(
-                  t.done ? Icons.check_box : Icons.check_box_outline_blank,
-                  size: 18,
-                ),
+                if (type == TaskListType.task)
+                  Icon(
+                    tasks[index].done
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    size: 18,
+                  )
+                else
+                  SizedBox(
+                    width: 18,
+                    child: Text(
+                      type == TaskListType.numbered ? '${index + 1}.' : '•',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    t.text,
+                    tasks[index].text,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -977,8 +969,12 @@ class _TaskPreview extends StatelessWidget {
               ],
             ),
           ),
-          if (t.children.isNotEmpty)
-            _TaskPreview(tasks: t.children, depth: depth + 1),
+          if (tasks[index].children.isNotEmpty)
+            _TaskPreview(
+              tasks: tasks[index].children,
+              type: type,
+              depth: depth + 1,
+            ),
         ],
       ],
     );

@@ -127,115 +127,197 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('HTTPS verwenden'),
-            subtitle: Text(
-              https
-                  ? 'Verschlüsselte Verbindung (empfohlen)'
-                  : 'Unverschlüsselt (HTTP)',
-            ),
-            value: https,
-            onChanged: _setHttps,
+          const _SectionHeader(
+            title: 'Synchronisation',
+            icon: Icons.cloud_sync_outlined,
           ),
-          if (!https)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    size: 20,
-                    color: scheme.error,
+          const _SubsectionHeader(title: 'Verbindung', icon: Icons.dns_outlined),
+          Card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SwitchListTile(
+                  secondary: Icon(
+                    https ? Icons.lock_outline : Icons.lock_open_outlined,
+                    color: https ? null : scheme.error,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Token und Notizen werden im Klartext übertragen und können mitgelesen werden. '
-                      'Nur in vertrauenswürdigen Netzwerken (z. B. Heimnetz) verwenden.',
-                      style: TextStyle(color: scheme.error),
+                  title: const Text('HTTPS verwenden'),
+                  subtitle: Text(
+                    https
+                        ? 'Verschlüsselte Verbindung (empfohlen)'
+                        : 'Unverschlüsselt (HTTP)',
+                  ),
+                  value: https,
+                  onChanged: _setHttps,
+                ),
+                if (!https)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 18,
+                          color: scheme.error,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Token und Notizen werden im Klartext übertragen und können mitgelesen werden. '
+                            'Nur in vertrauenswürdigen Netzwerken (z. B. Heimnetz) verwenden.',
+                            style: TextStyle(fontSize: 12, color: scheme.error),
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: url,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.link),
+                          labelText: 'Server-URL',
+                          hintText: 'https://memos.example.com',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: token,
+                        obscureText: true,
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.key_outlined),
+                          labelText: 'Access Token',
+                          helperText: 'Memos → Settings → My Account',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.check_circle_outline),
+                          label: Text(busy ? 'Prüfe …' : 'Testen & speichern'),
+                          onPressed: busy ? null : _save,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const _SubsectionHeader(
+            title: 'Zugangsdaten',
+            icon: Icons.vpn_key_outlined,
+          ),
+          Card(
+            child: ListTile(
+              enabled: !busy,
+              leading: Icon(Icons.delete_outline, color: scheme.error),
+              title: const Text('Server-URL & Token löschen'),
+              subtitle: const Text('Lokale Notizen bleiben erhalten'),
+              onTap: busy ? null : _clear,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const _SectionHeader(
+            title: 'Darstellung',
+            icon: Icons.palette_outlined,
+          ),
+          Card(
+            child: RadioGroup<ThemeMode>(
+              groupValue: s.themeMode,
+              onChanged: (mode) {
+                if (mode != null) s.setTheme(mode);
+              },
+              child: const Column(
+                children: [
+                  RadioListTile<ThemeMode>(
+                    secondary: Icon(Icons.light_mode_outlined),
+                    title: Text('Hell'),
+                    value: ThemeMode.light,
+                  ),
+                  RadioListTile<ThemeMode>(
+                    secondary: Icon(Icons.dark_mode_outlined),
+                    title: Text('Dunkel'),
+                    value: ThemeMode.dark,
+                  ),
+                  RadioListTile<ThemeMode>(
+                    secondary: Icon(Icons.settings_brightness_outlined),
+                    title: Text('Wie Systemeinstellung'),
+                    value: ThemeMode.system,
                   ),
                 ],
               ),
             ),
-          TextField(
-            controller: url,
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-            enableSuggestions: false,
-            decoration: const InputDecoration(
-              labelText: 'Server-URL',
-              hintText: 'https://memos.example.com',
-            ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: token,
-            obscureText: true,
-            enableSuggestions: false,
-            autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: 'Access Token (Memos → Settings → My Account)',
+          const SizedBox(height: 16),
+          const _SectionHeader(
+            title: 'Datenschutz',
+            icon: Icons.privacy_tip_outlined,
+          ),
+          Card(
+            child: SwitchListTile(
+              secondary: const Icon(Icons.hide_image_outlined),
+              title: const Text('Markdown-Bilder blockieren'),
+              subtitle: const Text(
+                'Verhindert, dass eingebettete Bilder automatisch geladen werden',
+              ),
+              value: s.blockMarkdownImages,
+              onChanged: s.setBlockMarkdownImages,
             ),
           ),
           const SizedBox(height: 16),
-          FilledButton(
-            onPressed: busy ? null : _save,
-            child: Text(busy ? 'Prüfe …' : 'Testen & speichern'),
+          const _SectionHeader(
+            title: 'Diagnose',
+            icon: Icons.bug_report_outlined,
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('Server-URL & Token löschen'),
-            onPressed: busy ? null : _clear,
-          ),
-          const SizedBox(height: 32),
-          const Text('Darstellung'),
-          const SizedBox(height: 8),
-          SegmentedButton<ThemeMode>(
-            segments: const [
-              ButtonSegment(value: ThemeMode.system, label: Text('System')),
-              ButtonSegment(value: ThemeMode.light, label: Text('Hell')),
-              ButtonSegment(value: ThemeMode.dark, label: Text('Dunkel')),
-            ],
-            selected: {s.themeMode},
-            onSelectionChanged: (v) => s.setTheme(v.first),
-          ),
-          const SizedBox(height: 24),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Markdown-Bilder blockieren'),
-            subtitle: const Text(
-              'Verhindert, dass eingebettete Bilder automatisch geladen werden',
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  secondary: const Icon(Icons.description_outlined),
+                  title: const Text('Logging aktivieren'),
+                  subtitle: const Text(
+                    'Schreibt Sync- und Fehlerprotokolle (max. 5 MB, nur in der App gespeichert)',
+                  ),
+                  value: s.logEnabled,
+                  onChanged: s.setLogEnabled,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.share, color: Colors.deepPurple),
+                  title: const Text('Log teilen'),
+                  subtitle: const Text('Vorhandene Logdatei teilen'),
+                  onTap: () async {
+                    final msg = ScaffoldMessenger.of(context);
+                    final ok = await LogService.share();
+                    if (!ok) {
+                      msg.showSnackBar(
+                        const SnackBar(
+                          content: Text('Noch keine Logs vorhanden'),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
             ),
-            value: s.blockMarkdownImages,
-            onChanged: s.setBlockMarkdownImages,
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Logging aktivieren'),
-            subtitle: const Text(
-              'Schreibt Sync- und Fehlerprotokolle (max. 5 MB, nur in der App gespeichert)',
-            ),
-            value: s.logEnabled,
-            onChanged: s.setLogEnabled,
-          ),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.share),
-            label: const Text('Log teilen'),
-            onPressed: () async {
-              final msg = ScaffoldMessenger.of(context);
-              final ok = await LogService.share();
-              if (!ok) {
-                msg.showSnackBar(
-                  const SnackBar(content: Text('Noch keine Logs vorhanden')),
-                );
-              }
-            },
           ),
           const SizedBox(height: 16),
+          const _SectionHeader(title: 'Info', icon: Icons.info_outline),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -243,15 +325,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'TravelBalance',
+                    'Meine Notizen',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 4),
                   const AppVersionText(),
                   const SizedBox(height: 4),
-                  const Text('Reisekosten einfach aufteilen.'),
+                  const Text('Notizen erfassen – optional mit Memos synchronisiert.'),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  const _SectionHeader({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubsectionHeader extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  const _SubsectionHeader({required this.title, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 8, top: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.secondary),
+          const SizedBox(width: 6),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.secondary,
             ),
           ),
         ],
