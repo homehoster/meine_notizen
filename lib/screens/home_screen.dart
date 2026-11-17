@@ -9,6 +9,7 @@ import '../models/space.dart';
 import '../models/task_doc.dart';
 import '../state/app_state.dart';
 import '../widgets/markdown_image_blocker.dart';
+import '../widgets/app_version_text.dart';
 import 'note_screen.dart';
 import 'settings_screen.dart';
 
@@ -597,35 +598,59 @@ class HomeScreen extends StatelessWidget {
                     );
                   },
                 ),
+                // Einstellungen unten verankert
                 const Divider(height: 1),
-                SizedBox(
-                  height: 48,
-                  child: ListTile(
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    minVerticalPadding: 0,
-                    leading: const Icon(Icons.settings),
-                    title: const Text('Einstellungen'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SettingsScreen(),
-                        ),
-                      );
-                    },
+                ListTile(
+                  leading: const Icon(Icons.settings_outlined),
+                  title: const Text('Einstellungen'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                    );
+                  },
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: AppVersionText(
+                    showBuild: true,
+                    prefix: 'meine Notizen v',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 11),
                   ),
                 ),
-                const SizedBox(
-                  height: 24,
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(72, 0, 16, 0),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: _AppVersionLabel(),
-                    ),
-                  ),
-                ),
+
+
+
+                // const Divider(height: 1),
+                // SizedBox(
+                //   height: 48,
+                //   child: ListTile(
+                //     dense: true,
+                //     visualDensity: VisualDensity.compact,
+                //     minVerticalPadding: 0,
+                //     leading: const Icon(Icons.settings),
+                //     title: const Text('Einstellungen'),
+                //     onTap: () {
+                //       Navigator.pop(context);
+                //       Navigator.of(context).push(
+                //         MaterialPageRoute(
+                //           builder: (_) => const SettingsScreen(),
+                //         ),
+                //       );
+                //     },
+                //   ),
+                // ),
+                // const SizedBox(
+                //   height: 24,
+                //   child: Padding(
+                //     padding: EdgeInsets.fromLTRB(72, 0, 16, 0),
+                //     child: Align(
+                //       alignment: Alignment.centerLeft,
+                //       child: _AppVersionLabel(),
+                //     ),
+                //   ),
+                // ),
               ],
             ),
           );

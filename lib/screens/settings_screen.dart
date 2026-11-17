@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../services/log.dart';
 import '../state/app_state.dart';
+import '../widgets/app_version_text.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -233,6 +234,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               }
             },
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'TravelBalance',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  const AppVersionText(),
+                  const SizedBox(height: 4),
+                  const Text('Reisekosten einfach aufteilen.'),
+                ],
+              ),
+            ),
           ),
         ],
       ),

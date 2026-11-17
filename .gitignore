@@ -48,12 +48,4 @@ app.*.map.json
 .widget_preview/
 
 # test related
-test/
-!test/
 test/*
-!test/models/
-test/models/*
-!test/models/note_test.dart
-!test/services/
-test/services/*
-!test/services/api_test.dart
