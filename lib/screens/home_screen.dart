@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../models/note.dart';
@@ -597,15 +598,33 @@ class HomeScreen extends StatelessWidget {
                   },
                 ),
                 const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.settings),
-                  title: const Text('Einstellungen'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                    );
-                  },
+                SizedBox(
+                  height: 48,
+                  child: ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    minVerticalPadding: 0,
+                    leading: const Icon(Icons.settings),
+                    title: const Text('Einstellungen'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SettingsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(
+                  height: 24,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(72, 0, 16, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _AppVersionLabel(),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -785,6 +804,51 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AppVersionLabel extends StatefulWidget {
+  const _AppVersionLabel();
+
+  @override
+  State<_AppVersionLabel> createState() => _AppVersionLabelState();
+}
+
+class _AppVersionLabelState extends State<_AppVersionLabel> {
+  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<PackageInfo>(
+    future: _packageInfo,
+    builder: (context, snapshot) {
+      final style = Theme.of(context).textTheme.bodySmall;
+      if (snapshot.hasError) {
+        return Tooltip(
+          message: 'App-Version konnte nicht geladen werden: ${snapshot.error}',
+          child: Text(
+            'Version nicht verfügbar',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          ),
+        );
+      }
+      if (!snapshot.hasData) {
+        return Text(
+          'Version wird geladen …',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: style,
+        );
+      }
+      final info = snapshot.data!;
+      return Text(
+        'Version ${info.version}+${info.buildNumber}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
+    },
+  );
 }
 
 final _headingRe = RegExp(r'^\s*#{1,6}\s+(.*)$');

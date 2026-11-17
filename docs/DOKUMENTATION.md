@@ -321,7 +321,7 @@ Dateien mit maximal 100 MB werden zuerst im privaten App-Speicher abgelegt und d
 - **Sync:** Symbol in der Titelleiste und Ziehen nach unten; während des Abgleichs ein Fortschrittskreis.
 - **Banner:** Sync-Fehler (mit „Erneut“) und Hinweis zur Wiederherstellung (mit „OK“).
 - **Leerer Zustand:** Ohne Konfiguration und ohne Notizen erscheint „Server & Token einrichten“.
-- **Seitenmenü:** App-Symbol, „Meine Notizen – für UseMemo“, unten „Einstellungen“.
+- **Seitenmenü:** App-Symbol, „Meine Notizen – für UseMemo“, unten eine kompakte Zeile „Einstellungen“ mit App-Version darunter.
 - **Neue Notiz:** Schwebender „+“-Knopf.
 
 ### Notiz (`note_screen.dart`)
@@ -378,7 +378,7 @@ Für Kamera, Mikrofon und Standort fragt die App bei Bedarf die Plattformberecht
 
 - Titelzeile „Notizen“ – Tipp öffnet die App.
 - Scrollbare Liste mit **Titel** und **Vorschau** (bis zu 5 Zeilen) je Notiz – Tipp öffnet genau diese Notiz.
-- „+“-Knopf: Dialog mit **Meine Notizen öffnen** und **Neue Notiz**.
+- „+“-Knopf: Schwebt unten rechts über der Liste, ohne eine eigene Zeile zu belegen; Dialog mit **Meine Notizen öffnen** und **Neue Notiz**. Die Liste nutzt den Bereich bis zum unteren Rand.
 - Leerer Zustand: „Noch keine Notizen“.
 - Größe: mindestens 110 × 110 dp, horizontal und vertikal skalierbar.
 
