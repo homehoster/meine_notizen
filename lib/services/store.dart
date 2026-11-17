@@ -1,19 +1,33 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:path_provider/path_provider.dart';
+
 import '../models/note.dart';
+import '../models/saved_view.dart';
+import '../models/space.dart';
 import 'log.dart';
 
 class LocalData {
   final List<Note> notes;
   final Set<String> widgetIds;
+  final List<SavedView> savedViews;
+  final List<MemoSpace> spaces;
+  final bool? spacesSupported;
 
   /// Hinweis für den Nutzer, falls beim Laden etwas schiefging
   /// (beschädigte Datei, Wiederherstellung aus der Sicherung).
   final String? warning;
 
-  LocalData(this.notes, this.widgetIds, {this.warning});
+  LocalData(
+    this.notes,
+    this.widgetIds,
+    this.savedViews,
+    this.spaces,
+    this.spacesSupported, {
+    this.warning,
+  });
 }
 
 /// Speichert Notizen in `notes.json`.
@@ -31,8 +45,20 @@ class LocalStore {
   Future<LocalData> _read(File f) async {
     final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
     return LocalData(
-      [for (final n in (j['notes'] as List)) Note.fromJson(n as Map<String, dynamic>)],
+      [
+        for (final n in (j['notes'] as List))
+          Note.fromJson(n as Map<String, dynamic>),
+      ],
       {...List<String>.from(j['widgetIds'] ?? [])},
+      [
+        for (final view in (j['savedViews'] as List? ?? const []))
+          SavedView.fromJson(view as Map<String, dynamic>),
+      ],
+      [
+        for (final space in (j['spaces'] as List? ?? const []))
+          MemoSpace.fromJson(space as Map<String, dynamic>),
+      ],
+      j['spacesSupported'] as bool?,
     );
   }
 
@@ -53,7 +79,8 @@ class LocalStore {
         final q = await _quarantine(main);
         final name = q.path.split(RegExp(r'[\\/]')).last;
         LogService.log('notes.json beschädigt ($e) -> gesichert als $name');
-        warning = 'Die lokale Notizdatei war beschädigt und wurde als „$name“ gesichert.';
+        warning =
+            'Die lokale Notizdatei war beschädigt und wurde als „$name“ gesichert.';
         restoreFrom = [bak];
       }
     } else {
@@ -68,6 +95,9 @@ class LocalStore {
         return LocalData(
           d.notes,
           d.widgetIds,
+          d.savedViews,
+          d.spaces,
+          d.spacesSupported,
           warning: warning == null
               ? 'Notizen wurden aus der Sicherungskopie wiederhergestellt.'
               : '$warning Der Stand wurde aus der Sicherungskopie wiederhergestellt.',
@@ -76,15 +106,24 @@ class LocalStore {
         LogService.log('Wiederherstellung aus ${f.path} fehlgeschlagen: $e');
       }
     }
-    return LocalData([], {}, warning: warning);
+    return LocalData([], {}, [], [], null, warning: warning);
   }
 
   /// Schreibvorgänge laufen nacheinander; Fehler gehen an den Aufrufer weiter.
-  Future<void> save(List<Note> notes, Set<String> widgetIds) {
+  Future<void> save(
+    List<Note> notes,
+    Set<String> widgetIds,
+    List<SavedView> savedViews,
+    List<MemoSpace> spaces,
+    bool? spacesSupported,
+  ) {
     // Daten sofort einfrieren, spätere Änderungen landen nicht im laufenden Schreibvorgang.
     final data = jsonEncode({
       'notes': notes.map((n) => n.toJson()).toList(),
       'widgetIds': widgetIds.toList(),
+      'savedViews': savedViews.map((view) => view.toJson()).toList(),
+      'spaces': spaces.map((space) => space.toJson()).toList(),
+      'spacesSupported': spacesSupported,
     });
     final result = _queue.then((_) => _write(data));
     _queue = result.catchError((Object _) {});

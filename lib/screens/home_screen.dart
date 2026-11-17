@@ -3,6 +3,8 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../models/note.dart';
+import '../models/saved_view.dart';
+import '../models/space.dart';
 import '../models/task_doc.dart';
 import '../state/app_state.dart';
 import '../widgets/markdown_image_blocker.dart';
@@ -13,18 +15,613 @@ void openNote(BuildContext c, Note n) =>
     Navigator.of(c)
         .push(MaterialPageRoute(builder: (_) => NoteScreen(note: n)));
 
+Future<void> _editSpace(
+  BuildContext context,
+  AppState state, {
+  MemoSpace? space,
+}) async {
+  final title = TextEditingController(text: space?.title ?? '');
+  final emoji = TextEditingController(text: space?.emoji ?? '');
+  final description = TextEditingController(text: space?.description ?? '');
+  final result = await showDialog<List<String>>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(space == null ? 'Bereich anlegen' : 'Bereich bearbeiten'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: title,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+            TextField(
+              controller: emoji,
+              decoration: const InputDecoration(labelText: 'Symbol / Emoji'),
+            ),
+            TextField(
+              controller: description,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Beschreibung'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Abbrechen'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (title.text.trim().isNotEmpty) {
+              Navigator.pop(context, [
+                title.text.trim(),
+                emoji.text.trim(),
+                description.text.trim(),
+              ]);
+            }
+          },
+          child: const Text('Speichern'),
+        ),
+      ],
+    ),
+  );
+  title.dispose();
+  emoji.dispose();
+  description.dispose();
+  if (result == null || !context.mounted) return;
+  try {
+    await state.saveSpace(
+      MemoSpace(
+        name: space?.name ?? '',
+        title: result[0],
+        emoji: result[1],
+        description: result[2],
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Bereich konnte nicht gespeichert werden: $e')),
+    );
+  }
+}
+
+Future<void> _deleteSpace(
+  BuildContext context,
+  AppState state,
+  MemoSpace space,
+) async {
+  final count = state.notes
+      .where((note) => note.space == space.name && !note.deleted)
+      .length;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Bereich löschen?'),
+      content: Text(
+        'Memos löscht mit dem Bereich auch alle darin abgelegten Notizen '
+        'dauerhaft. In der lokalen Liste sind $count Notizen zugeordnet. '
+        'Diese Aktion kann nicht rückgängig gemacht werden.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Abbrechen'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Bereich und Notizen löschen'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+  try {
+    await state.deleteSpace(space);
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Bereich konnte nicht gelöscht werden: $e')),
+    );
+  }
+}
+
+Future<void> _editView(
+  BuildContext context,
+  AppState state, {
+  SavedView? view,
+}) async {
+  final name = TextEditingController(text: view?.name ?? '');
+  final icon = TextEditingController(text: view?.icon ?? '◉');
+  final textContains = TextEditingController(text: view?.textContains ?? '');
+  final tag = TextEditingController(text: view?.tag ?? '');
+  var pinned = view?.pinned == null
+      ? 'any'
+      : view!.pinned!
+      ? 'pinned'
+      : 'notPinned';
+  var attachments = view?.hasAttachments == null
+      ? 'any'
+      : view!.hasAttachments!
+      ? 'yes'
+      : 'no';
+  var location = view?.hasLocation == null
+      ? 'any'
+      : view!.hasLocation!
+      ? 'yes'
+      : 'no';
+  final result = await showDialog<Map<String, String>>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: Text(view == null ? 'Ansicht anlegen' : 'Ansicht bearbeiten'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+              TextField(
+                controller: icon,
+                decoration: const InputDecoration(labelText: 'Symbol / Emoji'),
+              ),
+              TextField(
+                controller: textContains,
+                decoration: const InputDecoration(
+                  labelText: 'Text enthält (optional)',
+                ),
+              ),
+              TextField(
+                controller: tag,
+                decoration: const InputDecoration(labelText: 'Tag (optional)'),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: pinned,
+                decoration: const InputDecoration(labelText: 'Anpinnen'),
+                items: const [
+                  DropdownMenuItem(value: 'any', child: Text('Beliebig')),
+                  DropdownMenuItem(
+                    value: 'pinned',
+                    child: Text('Nur angepinnte'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'notPinned',
+                    child: Text('Nicht angepinnt'),
+                  ),
+                ],
+                onChanged: (value) =>
+                    setDialogState(() => pinned = value ?? 'any'),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: attachments,
+                decoration: const InputDecoration(labelText: 'Anhänge'),
+                items: const [
+                  DropdownMenuItem(value: 'any', child: Text('Beliebig')),
+                  DropdownMenuItem(value: 'yes', child: Text('Mit Anhängen')),
+                  DropdownMenuItem(value: 'no', child: Text('Ohne Anhänge')),
+                ],
+                onChanged: (value) =>
+                    setDialogState(() => attachments = value ?? 'any'),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: location,
+                decoration: const InputDecoration(labelText: 'Standort'),
+                items: const [
+                  DropdownMenuItem(value: 'any', child: Text('Beliebig')),
+                  DropdownMenuItem(value: 'yes', child: Text('Mit Standort')),
+                  DropdownMenuItem(value: 'no', child: Text('Ohne Standort')),
+                ],
+                onChanged: (value) =>
+                    setDialogState(() => location = value ?? 'any'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (name.text.trim().isNotEmpty) {
+                Navigator.pop(context, {
+                  'name': name.text.trim(),
+                  'icon': icon.text.trim(),
+                  'text': textContains.text.trim(),
+                  'tag': tag.text.trim(),
+                  'pinned': pinned,
+                  'attachments': attachments,
+                  'location': location,
+                });
+              }
+            },
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    ),
+  );
+  name.dispose();
+  icon.dispose();
+  textContains.dispose();
+  tag.dispose();
+  if (result == null || !context.mounted) return;
+  await state.saveView(
+    SavedView(
+      id: view?.id ?? 'view-${DateTime.now().microsecondsSinceEpoch}',
+      name: result['name']!,
+      icon: result['icon']!.isEmpty ? '◉' : result['icon']!,
+      textContains: result['text']!.isEmpty ? null : result['text'],
+      tag: result['tag']!.isEmpty ? null : result['tag'],
+      pinned: switch (result['pinned']) {
+        'pinned' => true,
+        'notPinned' => false,
+        _ => null,
+      },
+      hasAttachments: switch (result['attachments']) {
+        'yes' => true,
+        'no' => false,
+        _ => null,
+      },
+      hasLocation: switch (result['location']) {
+        'yes' => true,
+        'no' => false,
+        _ => null,
+      },
+    ),
+  );
+}
+
+Future<void> _chooseNoteSpace(
+  BuildContext context,
+  AppState state,
+  Note note,
+) async {
+  final selection = await showModalBottomSheet<String>(
+    context: context,
+    builder: (context) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.folder_off_outlined),
+            title: const Text('Keinem Bereich zuordnen'),
+            onTap: () => Navigator.pop(context, ''),
+          ),
+          for (final space in state.spaces)
+            ListTile(
+              leading: Text(space.emoji.isEmpty ? '📁' : space.emoji),
+              title: Text(space.title),
+              selected: note.space == space.name,
+              onTap: () => Navigator.pop(context, space.name),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (selection == null || !context.mounted) return;
+  MemoSpace? selectedSpace;
+  for (final space in state.spaces) {
+    if (space.name == selection) selectedSpace = space;
+  }
+  if (selectedSpace != null && note.space != selectedSpace.name) {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Notiz in Bereich verschieben?'),
+        content: Text(
+          'Die Notiz wird für Mitglieder des Bereichs „${selectedSpace!.title}“ '
+          'sichtbar. Ihre bisherige Sichtbarkeit wird dabei auf „Bereich“ gesetzt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Verschieben'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+  }
+  await state.assignSpace(note, selectedSpace);
+}
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  Widget _buildDrawer(BuildContext context, AppState state) {
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxSectionHeight = constraints.maxHeight / 3;
+          final theme = Theme.of(context);
+
+          Widget section({
+            required String title,
+            required IconData icon,
+            required int count,
+            required Widget Function(BuildContext, int) itemBuilder,
+            VoidCallback? onAdd,
+          }) {
+            if (count == 0 && onAdd == null) {
+              return const SizedBox.shrink();
+            }
+            if (count == 0) {
+              return SizedBox(
+                height: 48,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 16),
+                    Icon(icon, size: 20),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(title, style: theme.textTheme.titleSmall),
+                    ),
+                    IconButton(
+                      tooltip: '$title anlegen',
+                      icon: const Icon(Icons.add),
+                      onPressed: onAdd,
+                    ),
+                  ],
+                ),
+              );
+            }
+            final sectionHeight = maxSectionHeight.clamp(76.0, 100000.0);
+            final listHeight = (sectionHeight - 48).clamp(28.0, count * 52.0);
+            return SizedBox(
+              height: 48 + listHeight,
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 48,
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 16),
+                        Icon(icon, size: 20),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(title, style: theme.textTheme.titleSmall),
+                        ),
+                        if (onAdd != null)
+                          IconButton(
+                            tooltip: '$title anlegen',
+                            icon: const Icon(Icons.add),
+                            onPressed: onAdd,
+                          ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: listHeight,
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      itemExtent: 52,
+                      itemCount: count,
+                      itemBuilder: itemBuilder,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          void select(NavigationTarget target) {
+            state.select(target);
+            Navigator.pop(context);
+          }
+
+          return SingleChildScrollView(
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 128,
+                  width: double.infinity,
+                  child: DrawerHeader(
+                    margin: EdgeInsets.zero,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.asset(
+                            'asset/icon/icon_professional_cold.png',
+                            width: 52,
+                            height: 52,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Icon(
+                              Icons.sticky_note_2_outlined,
+                              size: 40,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Meine Notizen',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium,
+                              ),
+                              const Text('für UseMemo'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.notes_outlined),
+                  title: const Text('Alle Notizen'),
+                  selected: state.navigation.kind == NavigationKind.all,
+                  onTap: () =>
+                      select(const NavigationTarget(NavigationKind.all)),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.archive_outlined),
+                  title: const Text('Archiv'),
+                  selected: state.navigation.kind == NavigationKind.archive,
+                  onTap: () =>
+                      select(const NavigationTarget(NavigationKind.archive)),
+                ),
+                const Divider(height: 1),
+                if (state.spacesSupported == true)
+                  section(
+                    title: 'Bereiche',
+                    icon: Icons.folder_open_outlined,
+                    count: state.spaces.length,
+                    onAdd: () => _editSpace(context, state),
+                    itemBuilder: (context, index) {
+                      final space = state.spaces[index];
+                      return ListTile(
+                        dense: true,
+                        leading: Text(
+                          space.emoji.isEmpty ? '📁' : space.emoji,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                        title: Text(
+                          space.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        selected:
+                            state.navigation.kind == NavigationKind.space &&
+                            state.navigation.id == space.id,
+                        onTap: () => select(
+                          NavigationTarget(NavigationKind.space, space.id),
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          tooltip: 'Bereichsoptionen',
+                          onSelected: (value) {
+                            if (value == 'edit') {
+                              _editSpace(context, state, space: space);
+                            } else if (value == 'delete') {
+                              _deleteSpace(context, state, space);
+                            }
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text('Bearbeiten'),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Löschen'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                section(
+                  title: 'Ansichten',
+                  icon: Icons.tune,
+                  count: state.savedViews.length,
+                  onAdd: () => _editView(context, state),
+                  itemBuilder: (context, index) {
+                    final view = state.savedViews[index];
+                    return ListTile(
+                      dense: true,
+                      leading: Text(view.icon),
+                      title: Text(
+                        view.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      selected:
+                          state.navigation.kind == NavigationKind.view &&
+                          state.navigation.id == view.id,
+                      onTap: () => select(
+                        NavigationTarget(NavigationKind.view, view.id),
+                      ),
+                      trailing: PopupMenuButton<String>(
+                        tooltip: 'Ansichtsoptionen',
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            _editView(context, state, view: view);
+                          } else if (value == 'delete') {
+                            state.deleteView(view.id);
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'edit',
+                            child: Text('Bearbeiten'),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Löschen'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                section(
+                  title: 'Tags',
+                  icon: Icons.tag,
+                  count: state.tags.length,
+                  itemBuilder: (context, index) {
+                    final tag = state.tags[index];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.tag, size: 20),
+                      title: Text(tag),
+                      selected:
+                          state.navigation.kind == NavigationKind.tag &&
+                          state.navigation.id == tag,
+                      onTap: () =>
+                          select(NavigationTarget(NavigationKind.tag, tag)),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.settings),
+                  title: const Text('Einstellungen'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final notes = s.visible;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final subColor = dark ? Colors.grey.shade400 : Colors.grey.shade800;
+    final notes = s.selectedNotes;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notizen'),
+        title: Text(s.screenTitle),
         actions: [
           if (s.syncing)
             const Padding(
@@ -39,79 +636,7 @@ class HomeScreen extends StatelessWidget {
             IconButton(icon: const Icon(Icons.sync), onPressed: s.sync),
         ],
       ),
-      drawer: Drawer(
-        child: Column(
-          children: [
-            SizedBox(
-              height: MediaQuery.sizeOf(context).height * 0.2,
-              width: double.infinity,
-              child: DrawerHeader(
-                margin: EdgeInsets.zero,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                ),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.asset(
-                        'asset/icon/icon_professional_cold.png',
-                        width: 56,
-                        height: 56,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Icon(
-                          Icons.sticky_note_2_outlined,
-                          size: 40,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onPrimaryContainer,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: IntrinsicWidth(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              'Meine Notizen',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            Text(
-                              'für UseMemo',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: subColor),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const Spacer(),
-            const Divider(height: 1),
-            SafeArea(
-              top: false,
-              child: ListTile(
-                leading: const Icon(Icons.settings),
-                title: const Text('Einstellungen'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+      drawer: Drawer(child: _buildDrawer(context, s)),
       body: Column(
         children: [
           if (s.notice != null)
@@ -166,19 +691,55 @@ class HomeScreen extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
-                                    child: _NotePreview(n, s.blockMarkdownImages),
+                                    child: _NotePreview(
+                                      n,
+                                      s.blockMarkdownImages,
+                                    ),
                                   ),
                                   Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       PopupMenuButton<String>(
-                                        onSelected: (v) {
-                                          if (v == 'w') s.toggleWidget(n);
-                                          if (v == 'd') s.deleteNote(n);
+                                        onSelected: (value) async {
+                                          switch (value) {
+                                            case 'pin':
+                                              await s.setPinned(n, !n.pinned);
+                                            case 'archive':
+                                              await s.archive(n);
+                                            case 'restore':
+                                              await s.restore(n);
+                                            case 'space':
+                                              await _chooseNoteSpace(ctx, s, n);
+                                            case 'widget':
+                                              await s.toggleWidget(n);
+                                            case 'delete':
+                                              await s.deleteNote(n);
+                                          }
                                         },
                                         itemBuilder: (_) => [
                                           PopupMenuItem(
-                                            value: 'w',
+                                            value: 'pin',
+                                            child: Text(
+                                              n.pinned ? 'Lösen' : 'Anpinnen',
+                                            ),
+                                          ),
+                                          if (n.state == NoteState.normal)
+                                            const PopupMenuItem(
+                                              value: 'archive',
+                                              child: Text('Archivieren'),
+                                            )
+                                          else
+                                            const PopupMenuItem(
+                                              value: 'restore',
+                                              child: Text('Wiederherstellen'),
+                                            ),
+                                          if (s.spacesSupported == true)
+                                            const PopupMenuItem(
+                                              value: 'space',
+                                              child: Text('Bereich zuordnen'),
+                                            ),
+                                          PopupMenuItem(
+                                            value: 'widget',
                                             child: Text(
                                               s.widgetIds.contains(n.id)
                                                   ? 'Aus Widget entfernen'
@@ -186,7 +747,7 @@ class HomeScreen extends StatelessWidget {
                                             ),
                                           ),
                                           PopupMenuItem(
-                                            value: 'd',
+                                            value: 'delete',
                                             child: Text(
                                               'Löschen',
                                               style: TextStyle(

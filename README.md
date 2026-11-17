@@ -1,4 +1,4 @@
-# <img src="asset/icon/icon_professional_cold.png" alt="" width="40" align="absmiddle"> Meine Notizen
+# <img src="asset/icon/icon_professional_cold.png" alt="" width="40" align="absmiddle"> Meine Notizen (Build by KI)
 
 **Notizen schnell erfassen – ohne Markdown-Kenntnisse, auf Wunsch aber komplett in Markdown.**
 
@@ -37,6 +37,9 @@ Das Hauptaugenmerk liegt auf einer **leichten Erfassung**: Listen, Aufgaben und 
 - 🔎 **Keine Doppelten** – tippst du einen Eintrag, den es in der Notiz schon gibt, schlägt die App den vorhandenen vor und öffnet ihn auf Wunsch wieder, statt ihn doppelt anzulegen.
 - 🖊️ **Markdown-Werkzeugleiste** – Rückgängig, Überschrift 1/2, normaler Text, fett, kursiv, Aufzählung, Nummerierung, Aufgabe, Link, Code und Zitat.
 - 🗂️ **Übersicht als Karten** – jede Notiz zeigt Überschrift und die ersten Zeilen in der Ansicht, damit du sofort erkennst, worum es geht.
+- 🧭 **Archiv, Bereiche, Ansichten und Tags** – Notizen archivieren, Memos-Bereichen zuordnen und eigene lokale Filteransichten anlegen.
+- 📌 **Notizen organisieren** – anheften, einem Bereich zuordnen und Tags direkt über das Seitenmenü filtern.
+- 📎 **Anhänge und Medien** – Dateien, Bilder, Zeichnungen/Markierungen, Audioaufnahmen und den aktuellen Standort zu einer Notiz hinzufügen.
 - 📴 **Offline-first** – Notizen werden lokal gespeichert; nicht synchronisierte Notizen sind mit einem Wolken-Symbol markiert.
 - 🔄 **Sync mit Memos** – optional, mit Server-URL und Access Token. Siehe [unten](#mit-memos-synchronisieren).
 - 📱 **Homescreen-Widget (Android)** – zeigt eine Auswahl deiner Notizen und springt per Tipp direkt in die Notiz. Über das „+“ im Widget legst du eine neue Notiz an.
@@ -75,6 +78,9 @@ Die App funktioniert auch ohne Server. Möchtest du deine Notizen mit deiner eig
 **Gut zu wissen**
 
 - Neue Notizen werden in Memos als **privat** angelegt.
+- **Bereiche** verwenden Memos-Spaces und sind nur sichtbar, wenn der Server die Spaces-API unterstützt. Beim Verschieben in einen Bereich wird die Notiz für dessen Mitglieder sichtbar; beim Entfernen wird die vorherige Sichtbarkeit wiederhergestellt.
+- Archiv, Anheften und Anhänge werden mit Memos synchronisiert. **Ansichten** werden lokal auf dem Gerät gespeichert.
+- Datei-, Kamera-, Mikrofon- und Standortberechtigungen fragt das Betriebssystem bei Bedarf ab. Unbekannte Dateitypen werden in der App nicht ausgeführt oder außerhalb der App geöffnet.
 - Änderungen werden lokal sofort gespeichert und kurz nach dem Tippen bzw. beim Verlassen der Notiz und beim Wechsel in den Hintergrund zum Server gesendet.
 - Mit Ziehen nach unten auf der Startseite oder dem Sync-Symbol startest du die Synchronisation manuell.
 - Der Schalter **HTTPS verwenden** setzt das Schema in der URL-Zeile. HTTP ist nur für vertrauenswürdige Netzwerke (z. B. Heimnetz) gedacht – der Token wird dann unverschlüsselt übertragen, die App warnt davor.

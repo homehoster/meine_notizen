@@ -93,10 +93,15 @@ Grundprinzipien:
 | `id` | `String` | Server-ID (Teil nach `memos/`) oder `local-<Zeitstempel>` für noch nie gesendete Notizen. |
 | `content` | `String` | Gesamter Markdown-Text der Notiz. |
 | `updated` | `DateTime` | Zeitpunkt der letzten Änderung (zur Sortierung). |
-| `pinned` | `bool` | „Angeheftet“-Status vom Server; angeheftete Notizen stehen oben. |
+| `pinned` | `bool` | „Angeheftet“-Status; angeheftete Notizen stehen oben. |
 | `dirty` | `bool` | Lokale Änderung ist noch nicht auf dem Server. |
 | `deleted` | `bool` | Zum Löschen markiert, Löschung noch nicht auf dem Server. |
+| `state`, `visibility`, `space` | Status und Sichtbarkeit | Normal/archiviert, Memos-Sichtbarkeit und zugeordneter Bereich. |
+| `tags`, `attachments` | Listen | Vom Server gelieferte Tags und Dateianhänge. Tags werden bei älteren Serverantworten aus dem Markdown ermittelt. |
+| `pendingAttachments`, `location` | lokale Medien | Noch hochzuladende Dateien sowie Standortdaten. |
 | `busy` | `bool` | Nur im Speicher: gerade läuft ein Sendevorgang (wird nicht gespeichert). |
+
+`SavedView` speichert Name, Symbol und optionale Filter lokal. Eine Ansicht kann nach Text, Tag, Anheftstatus, Anhängen und Standort filtern; Memos stellt dafür keinen eigenen Ansichts-Endpunkt bereit. `MemoSpace` bildet Name, Titel, Beschreibung und Symbol eines Memos-Bereichs ab.
 
 Wichtige Eigenschaften:
 
@@ -160,6 +165,8 @@ Ein Dokument wird in **Segmente** zerlegt:
 | `configured` | `true`, wenn URL **und** Token gesetzt sind. |
 | `themeMode` | System, Hell oder Dunkel. |
 | `notes`, `visible` | Alle Notizen bzw. die sichtbare, sortierte Liste (angeheftet zuerst, dann zuletzt geändert). |
+| `navigation`, `selectedNotes` | Aktuelle Hauptansicht und gefilterte Notizen (Alle, Archiv, Bereich, Ansicht oder Tag). |
+| `spaces`, `spacesSupported`, `savedViews` | Vom Server geladene Bereiche und deren Verfügbarkeit sowie lokal gespeicherte Ansichten. |
 | `widgetIds` | IDs der Notizen, die im Widget erscheinen sollen. |
 | `syncing`, `error` | Status und letzte Fehlermeldung der Synchronisation. |
 | `notice` | Einmaliger Hinweis, z. B. wenn die lokale Datei wiederhergestellt wurde. |
@@ -174,6 +181,10 @@ Ein Dokument wird in **Segmente** zerlegt:
 | `saveContent()` | Speichert Text lokal und plant das Senden. |
 | `finishEditing()` | Beim Verlassen einer Notiz: lokal sichern, leere neue Notiz verwerfen, sonst sofort senden. |
 | `deleteNote()` | Markiert als gelöscht (lokale Notizen verschwinden sofort) und löscht auf dem Server. |
+| `archive()` / `restore()` | Archiviert bzw. stellt eine Notiz wieder her. |
+| `setPinned()` / `assignSpace()` | Ändert Anheftstatus bzw. Memos-Bereich. Beim Bereichswechsel werden Bereich und Sichtbarkeit gemeinsam aktualisiert. |
+| `saveView()` / `deleteView()` | Speichert oder entfernt eine lokale Filteransicht. |
+| `addPendingAttachment()` / `setLocation()` | Speichert Medien lokal für den späteren Upload bzw. hängt den aktuellen Standort an. |
 | `toggleWidget()` | Nimmt eine Notiz in die Widget-Auswahl auf bzw. entfernt sie. |
 | `sync()` | Vollständiger Abgleich mit dem Server. |
 | `saveSettings()` / `testConnection()` | Zugangsdaten speichern bzw. Verbindung prüfen. |
@@ -205,7 +216,9 @@ Wird eine Notiz gesendet, während du weitertippst, sendet die App den neueren S
    - Notiz auf beiden Seiten und lokal **geändert/gelöscht** → der lokale Stand bleibt.
    - Lokale, noch nie gesendete Notiz → bleibt erhalten.
    - Unveränderte Notiz, die auf dem Server nicht mehr existiert → wird lokal entfernt.
-4. Ergebnis wird lokal gespeichert.
+4. Archivierte und normale Notizen werden zusammengeführt; Ergebnis und Bereiche werden lokal gespeichert.
+
+Beim Start bzw. vollständigen Sync liest die App die Serverversion über `GET /api/instance/profile` und prüft unabhängig davon `GET /api/spaces`. Nur bei `404` oder `501` gilt die Spaces-API als nicht verfügbar; dann blendet das Seitenmenü den Bereichsabschnitt aus. Andere Server- oder Netzwerkfehler bleiben als Sync-Fehler sichtbar. Die Profilversion dient der Diagnose und ersetzt den API-Funktionstest nicht.
 
 ### Neue Notizen
 
@@ -266,6 +279,7 @@ Schreibvorgänge laufen nacheinander in einer Warteschlange, sodass sie sich nic
 - Nichts Lesbares → leere Liste (mit Hinweis, falls eine Datei beschädigt war).
 
 Einstellungen (URL, Design, Logging) liegen in `shared_preferences`, der Token im sicheren Speicher.
+Zusätzlich enthält `notes.json` die lokal gespeicherten Ansichten, den zuletzt geladenen Bereichsbestand und den Spaces-Verfügbarkeitsstatus. Hochzuladende Dateien liegen im App-Dokumentenordner unter `pending_attachments`; ihre lokalen Pfade werden mitgespeichert.
 
 ---
 
@@ -276,16 +290,21 @@ Einstellungen (URL, Design, Logging) liegen in `shared_preferences`, der Token i
 | Zweck | Anfrage |
 |-------|---------|
 | Verbindung prüfen | `GET /api/memos?pageSize=1` |
-| Notizen laden | `GET /api/memos?pageSize=200[&pageToken=…]` (wiederholt, bis keine Folgeseite mehr kommt) |
+| Notizen laden | `GET /api/memos?pageSize=200&state=NORMAL` bzw. `state=ARCHIVED` (seitenweise) |
 | Notiz anlegen | `POST /api/memos` mit `{"content": …, "visibility": "PRIVATE"}` |
-| Notiz ändern | `PATCH /api/memos/{id}?updateMask=content` mit `{"content": …}` |
+| Notiz ändern | `PATCH /api/memos/{id}?updateMask=…` für geänderte Felder wie `content`, `state`, `pinned`, `space`, `visibility` oder `location` |
 | Notiz löschen | `DELETE /api/memos/{id}` |
+| Bereiche | `GET /api/spaces`; Erstellen, Ändern und Löschen über `POST`, `PATCH` und `DELETE /api/spaces/{id}` |
+| Anhang hochladen | `POST /api/attachments:upload` (initialisieren und in begrenzten Chunks übertragen), danach `PATCH /api/memos/{id}/attachments` |
+| Anhang laden | `GET /file/attachments/{uid}` |
 
-Aus der Serverantwort werden `name` (→ ID), `content`, `updateTime` und `pinned` übernommen. Andere Felder (Tags, Anhänge, Sichtbarkeit bestehender Notizen) werden nicht verändert.
+Beim Bereichswechsel setzt die App `space` und `visibility` in einem Update; Memos begrenzt die Zuordnung serverseitig auf einen Bereich pro Notiz. Bereichsnotizen werden mit `SPACE`-Sichtbarkeit für Bereichsmitglieder freigegeben. Die App merkt sich die vorherige Sichtbarkeit lokal und stellt sie beim Entfernen des Bereichs wieder her.
+
+Dateien mit maximal 100 MB werden zuerst im privaten App-Speicher abgelegt und dann in Chunks bis maximal 2 MB übertragen. Schlägt die Verknüpfung nach dem Upload fehl, bleibt die Upload-ID lokal vermerkt, damit der Dateiinhalt nicht erneut übertragen werden muss. Unbekannte Dateitypen werden nicht gestartet; Bilder, Audio und Text/JSON können innerhalb der App angesehen bzw. abgespielt werden.
 
 **Server-URL:** `normalizeBaseUrl` entfernt Leerzeichen und abschließende `/`, ergänzt bei fehlendem Schema `https://` und lehnt ungültige URLs ab.
 
-> 📌 Die Pfade werden an einer Stelle gebaut (`_u` in `api.dart`). Erwartet deine Memos-Version einen anderen Präfix (z. B. `/api/v1/`), muss nur dort angepasst werden. Die offizielle Beschreibung: <https://usememos.com/docs/api/latest>
+> 📌 Die App verwendet die aktuellen Pfade ohne `v1`-Präfix. Ältere Memos-Server können Spaces, Archiv oder Chunk-Uploads noch nicht unterstützen. Die Spaces-API wird zur Laufzeit geprüft; die Dokumentation der API: <https://usememos.com/docs/api/latest>
 
 ---
 
@@ -293,8 +312,12 @@ Aus der Serverantwort werden `name` (→ ID), `content`, `updateTime` und `pinne
 
 ### Startseite (`home_screen.dart`)
 
-- **Notizkarten:** Pro Notiz Überschrift (falls die Notiz mit `#` beginnt) plus maximal 5 Zeilen; ohne Überschrift die ersten 5 Zeilen. Erledigte Aufgaben sind ausgeblendet, bei mehr Inhalt erscheint „…“. Leere Notizen zeigen „Leere Notiz“.
-- **Symbole an der Karte:** Wolke (noch nicht synchronisiert), Widget-Symbol (im Widget angezeigt), Menü „Im Widget anzeigen / Aus Widget entfernen / Löschen“.
+- **Notizkarten:** Pro Notiz Überschrift plus Vorschau; erledigte Aufgaben sind ausgeblendet. Angeheftete Notizen stehen oben.
+- **Seitenmenü:** Alle Notizen, Archiv, (falls verfügbar) Memos-Bereiche, lokale gespeicherte Ansichten und alle Tags normaler Notizen. Bereich-, Ansichts- und Tag-Listen sind jeweils auf ein Drittel der verfügbaren Menüfläche begrenzt und bei Bedarf scrollbar; leere Listen belegen keinen Listenplatz.
+- **Gespeicherte Ansichten:** Name, Symbol und Filter für Text, Tag, Anheftstatus, Anhänge und Standort. Erstellen, Bearbeiten und Löschen über das Plus- bzw. Drei-Punkte-Menü.
+- **Bereiche:** Über Memos verwaltet; Erstellen, Bearbeiten und Löschen im Drei-Punkte-Menü. Das Löschen ist serverseitig destruktiv und wird deshalb bestätigt. Das Menü weist darauf hin, dass Memos damit auch alle Bereichsnotizen löscht.
+- **Notizaktionen:** Archivieren/Wiederherstellen, Anheften, einem Bereich zuordnen bzw. Zuordnung entfernen und Löschen.
+- **Symbole an der Karte:** Wolke (noch nicht synchronisiert), Widget-Symbol (im Widget angezeigt), Menü mit den Notizaktionen.
 - **Sync:** Symbol in der Titelleiste und Ziehen nach unten; während des Abgleichs ein Fortschrittskreis.
 - **Banner:** Sync-Fehler (mit „Erneut“) und Hinweis zur Wiederherstellung (mit „OK“).
 - **Leerer Zustand:** Ohne Konfiguration und ohne Notizen erscheint „Server & Token einrichten“.
@@ -310,6 +333,8 @@ Zwei Modi, umschaltbar oben:
 - Text wird als Markdown dargestellt (Überschriften, fett, Links …).
 - Listen sind **direkt bearbeitbar** (siehe `TaskSegView`).
 - „+“-Knopf mit Auswahl: **Aufgabe**, **Aufzählung** oder **Nummerierung** hinzufügen. Der neue Eintrag wird an die letzte Liste gleichen Typs angehängt oder als neue Liste angelegt.
+- Weitere Aktionen über „+“: Datei, Bild aus Galerie, Foto, Zeichnung, Bild markieren, Audioaufnahme und aktueller Standort. Uploads werden offline vorgemerkt.
+- Anhänge werden innerhalb der App geöffnet. Unbekannte Dateitypen werden nicht ausgeführt oder an eine externe App übergeben; Standorte öffnen bei Auswahl einen Kartenlink.
 - Links öffnen nur, wenn sie mit `http`, `https` oder `mailto` beginnen; andere Link-Arten werden blockiert.
 
 **Editor**
@@ -342,6 +367,8 @@ Zwei Modi, umschaltbar oben:
 | **Darstellung** | System / Hell / Dunkel. |
 | **Logging aktivieren** | Standard: aus. |
 | **Log teilen** | Öffnet das Teilen-Menü mit einer Kopie der Logdatei. |
+
+Für Kamera, Mikrofon und Standort fragt die App bei Bedarf die Plattformberechtigung an. Dateiauswahl und Galerie verwenden den Systemdialog.
 
 ---
 
@@ -398,6 +425,8 @@ Nur beim **App-Start**, beim **Zurückkehren in die App** und beim **Wechsel in 
 | **Klartext-Verkehr (Android)** | `usesCleartextTraffic="true"` ist nötig, damit HTTP überhaupt funktioniert. Die Kontrolle liegt beim Schalter in der App. |
 | **Kein Cloud-Backup** | `android:allowBackup="false"` – Notizen und Widget-Daten landen nicht im Geräte-Backup. |
 | **Links geprüft** | Nur `http`, `https`, `mailto` werden geöffnet. |
+| **Dateianhänge** | Unbekannte Binärdateien werden nicht ausgeführt oder außerhalb der App gestartet. Dateien werden vor dem Upload im App-Privatspeicher abgelegt (maximal 100 MB). |
+| **Standort** | Der aktuelle Standort wird erst nach Bestätigung im Kontextmenü und erteilter Betriebssystemberechtigung erfasst. |
 | **Widget-Links geprüft** | Nur Schema `notizapp` und vier feste Ziele. |
 | **Notizen privat** | Neue Notizen werden in Memos mit `PRIVATE` angelegt. |
 | **Datenverlust vermeiden** | Atomares Speichern, Sicherungskopie, beschädigte Dateien werden aufbewahrt statt verworfen. |
@@ -428,7 +457,7 @@ Nur beim **App-Start**, beim **Zurückkehren in die App** und beim **Wechsel in 
 | App-Name | „Meine Notizen“ |
 | Java-Ziel | 17 |
 | Android Gradle Plugin / Kotlin | 9.1.0 / 2.4.0 (siehe `settings.gradle.kts`) |
-| Berechtigungen | `INTERNET` |
+| Berechtigungen | `INTERNET`, `RECORD_AUDIO`, `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION` |
 | `allowBackup` | `false` |
 | `usesCleartextTraffic` | `true` (für den optionalen HTTP-Modus) |
 | `flutter_deeplinking_enabled` | `false` |
@@ -462,6 +491,10 @@ Der Dart-Code läuft auf iOS. Noch **nicht** umgesetzt:
 | `flutter_markdown` | Darstellung von Markdown in der Ansicht |
 | `url_launcher` | Öffnen von Links |
 | `share_plus` | Teilen der Logdatei |
+| `file_picker` | Dateien über den Systemdialog auswählen |
+| `image_picker` | Bilder auswählen bzw. Kamera verwenden |
+| `record`, `audioplayers` | Audio aufnehmen und wiedergeben |
+| `geolocator` | Standortberechtigung und aktuelle Koordinaten |
 
 > ℹ️ `flutter_markdown` wird vom Flutter-Team nicht mehr weiterentwickelt. Eine Alternative ist der Nachfolger `flutter_markdown_plus`.
 
@@ -473,7 +506,8 @@ Der Dart-Code läuft auf iOS. Noch **nicht** umgesetzt:
 - **Serverwechsel:** Lokale Notizen verweisen auf die IDs des bisherigen Servers. Ungesendete Änderungen würden bei einem anderen Server ins Leere laufen. Vor einem Wechsel sollten alle Notizen synchronisiert sein und die lokalen Notizen gelöscht werden.
 - **Listen-Umformatierung:** Beim Bearbeiten in der Ansicht schreibt der Serializer Listen neu: `*` wird zu `-`, Nummerierungen werden neu gezählt, Einrückungen auf 2 Leerzeichen vereinheitlicht. Listenartige Zeilen in Codeblöcken werden als Liste erkannt, mehrzeilige Listeneinträge (Fortsetzungszeilen) werden nicht unterstützt.
 - **Bilder:** Bilder aus Markdown (`![](https://…)`) werden vom Rendering-Paket automatisch geladen, auch in den Karten der Startseite.
-- **Nur Text:** Anhänge, Tags und die Sichtbarkeit bestehender Notizen werden nicht bearbeitet. Anheften (`pinned`) wird vom Server gelesen, lässt sich in der App aber nicht ändern.
-- **Server-Version:** Die API-Pfade entsprechen `api.dart`; bei abweichender Memos-Version dort anpassen (siehe [Abschnitt 8](#8-memos-api)).
+- **Server-Version:** Spaces, Archiv und Chunk-Uploads erfordern passende Endpunkte der Memos-Instanz. Nur die Spaces-Fähigkeit wird automatisch erkannt; fehlen andere Endpunkte, meldet der Sync den Serverfehler (siehe [Abschnitt 8](#8-memos-api)).
+- **Gespeicherte Ansichten:** Ansichten sind lokal und werden nicht zwischen Geräten oder über Memos synchronisiert.
+- **Standort:** Standortdaten sind plattformspezifisch und setzen eine Berechtigung voraus. Die Synchronisation erfordert eine Memos-Version, die das `location`-Feld unterstützt.
 - **Widget:** Nur Android; Aktualisierung nur beim Öffnen und beim Verlassen der App.
 - **iOS:** Widget und Link-Verarbeitung fehlen noch (siehe [Abschnitt 14](#14-ios-status)).
