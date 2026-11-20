@@ -304,7 +304,7 @@ Dateien mit maximal 100 MB werden zuerst im privaten App-Speicher abgelegt und d
 
 **Server-URL:** `normalizeBaseUrl` entfernt Leerzeichen und abschließende `/`, ergänzt bei fehlendem Schema `https://` und lehnt ungültige URLs ab.
 
-> 📌 Die App verwendet die aktuellen Pfade ohne `v1`-Präfix. Ältere Memos-Server können Spaces, Archiv oder Chunk-Uploads noch nicht unterstützen. Die Spaces-API wird zur Laufzeit geprüft; die Dokumentation der API: <https://usememos.com/docs/api/latest>
+> 📌 Die App unterstützt Memos ab Version **26.10.0**. Ab dieser Version sind die REST-Pfade ohne `v1`-Präfix gültig, zum Beispiel `/api/memos` und `/api/spaces`. Ältere Memos-Server werden nicht unterstützt. Die Dokumentation der API: <https://usememos.com/docs/api/latest>
 
 ---
 

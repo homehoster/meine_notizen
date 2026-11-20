@@ -9,6 +9,8 @@
 
 „Meine Notizen“ ist eine Notiz-App für Android und iOS. Sie funktioniert **eigenständig** – alle Notizen liegen lokal auf dem Gerät und sind auch ohne Internet verfügbar. Wer eine eigene Instanz von **[Memos](https://usememos.com)** (usememos) betreibt, kann die App zusätzlich mit diesem Server **synchronisieren**.
 
+> ⚠️ **Mindestanforderung:** Die Synchronisierung funktioniert erst ab **Memos 26.10.0**. Ältere Memos-Versionen werden nicht unterstützt.
+
 Das Hauptaugenmerk liegt auf einer **leichten Erfassung**: Listen, Aufgaben und Überschriften legst du per Knopfdruck an – ganz ohne Markdown zu kennen. Wer Markdown mag, schaltet in den **Editor** um und schreibt alles direkt als Markdown-Text.
 
 > 📖 Die technische Beschreibung des Codes findest du auf einer eigenen Seite: **[Code-Dokumentation → docs/DOKUMENTATION.md](docs/DOKUMENTATION.md)**
@@ -83,6 +85,7 @@ Die App funktioniert auch ohne Server. Möchtest du deine Notizen mit deiner eig
 - **Bereiche** verwenden Memos-Spaces und sind nur sichtbar, wenn der Server die Spaces-API unterstützt. Beim Verschieben in einen Bereich wird die Notiz für dessen Mitglieder sichtbar; beim Entfernen wird die vorherige Sichtbarkeit wiederhergestellt.
 - Archiv, Anheften und Anhänge werden mit Memos synchronisiert. **Ansichten** werden lokal auf dem Gerät gespeichert.
 - Memo-Verknüpfungen werden als Memos-Referenzbeziehungen synchronisiert und benötigen eine Instanz mit Relations-API-Unterstützung.
+- Unterstützt werden Memos ab Version **26.10.0**. Die App verwendet ab dieser Version die API-Pfade ohne `v1`-Präfix, zum Beispiel `/api/memos`.
 - Datei-, Kamera-, Mikrofon- und Standortberechtigungen fragt das Betriebssystem bei Bedarf ab. Unbekannte Dateitypen werden in der App nicht ausgeführt oder außerhalb der App geöffnet.
 - Änderungen werden lokal sofort gespeichert und kurz nach dem Tippen bzw. beim Verlassen der Notiz und beim Wechsel in den Hintergrund zum Server gesendet.
 - Mit Ziehen nach unten auf der Startseite oder dem Sync-Symbol startest du die Synchronisation manuell.
