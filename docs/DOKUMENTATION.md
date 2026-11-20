@@ -75,12 +75,12 @@ Grundprinzipien:
 |-------|---------|
 | `kotlin/…/MainActivity.kt` | Flutter-Activity. Nimmt `notizapp://`-Links entgegen und reicht sie über einen `MethodChannel` an Flutter weiter. |
 | `kotlin/…/NoteWidgetProvider.kt` | Widget-Provider: baut das Layout, verbindet die Liste und setzt die Klick-Aktionen. |
-| `kotlin/…/NoteWidgetService.kt` | `RemoteViewsService`: liefert die Zeilen (Titel + Vorschau) der Widget-Liste. |
+| `kotlin/…/NoteWidgetService.kt` | `RemoteViewsService`: liefert Titel, Vorschau und Bild-Thumbnail je Widget-Zeile. |
 | `kotlin/…/WidgetActionActivity.kt` | Kleiner Dialog beim Tippen auf „+“ im Widget („Meine Notizen öffnen“ / „Neue Notiz“). |
 | `res/layout/note_widget.xml`, `note_widget_row.xml` | Layout des Widgets und einer Listenzeile. |
 | `res/drawable/widget_bg.xml`, `widget_fab_bg.xml` | Hintergrund des Widgets und runder „+“-Knopf. |
 | `res/xml/note_widget_info.xml` | Widget-Metadaten (Mindestgröße 110 dp, skalierbar, kein periodisches Update). |
-| `res/values/…`, `values-night/…` | Themes (`LaunchTheme`, `NormalTheme`, `WidgetActionTheme`) und Widget-Stile. |
+| `res/values/…`, `values-night/…` | Themes und Widget-Farben für den hellen bzw. dunklen Systemmodus. |
 
 ---
 
@@ -295,7 +295,7 @@ Zusätzlich enthält `notes.json` die lokal gespeicherten Ansichten, den zuletzt
 | Notiz ändern | `PATCH /api/memos/{id}?updateMask=…` für geänderte Felder wie `content`, `state`, `pinned`, `space`, `visibility` oder `location` |
 | Notiz löschen | `DELETE /api/memos/{id}` |
 | Bereiche | `GET /api/spaces`; Erstellen, Ändern und Löschen über `POST`, `PATCH` und `DELETE /api/spaces/{id}` |
-| Anhang hochladen | `POST /api/attachments:upload` (initialisieren und in begrenzten Chunks übertragen), danach `PATCH /api/memos/{id}/attachments` |
+| Anhang hochladen | `POST /api/attachments:upload` (initialisieren und in begrenzten Chunks übertragen), danach `PATCH /api/memos/{id}/attachments` mit der vollständigen Anhangliste als Anhangobjekte (leere Liste entfernt alle Anhänge aus der Notiz) |
 | Anhang laden | `GET /file/attachments/{uid}` |
 
 Beim Bereichswechsel setzt die App `space` und `visibility` in einem Update; Memos begrenzt die Zuordnung serverseitig auf einen Bereich pro Notiz. Bereichsnotizen werden mit `SPACE`-Sichtbarkeit für Bereichsmitglieder freigegeben. Die App merkt sich die vorherige Sichtbarkeit lokal und stellt sie beim Entfernen des Bereichs wieder her.

@@ -3,14 +3,33 @@
     android:id="@+id/widget_note_row"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
     android:paddingTop="7dp"
     android:paddingBottom="7dp">
 
-    <TextView
-        android:id="@+id/widget_note_title"
-        style="@style/NoteTitle"/>
-    <TextView
-        android:id="@+id/widget_note_preview"
-        style="@style/NotePreview"/>
+    <ImageView
+        android:id="@+id/widget_note_image"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="Notizbild"
+        android:scaleType="centerCrop"
+        android:visibility="gone"/>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_note_title"
+            style="@style/NoteTitle"/>
+        <TextView
+            android:id="@+id/widget_note_preview"
+            style="@style/NotePreview"/>
+    </LinearLayout>
 </LinearLayout>
