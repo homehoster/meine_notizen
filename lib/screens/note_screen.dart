@@ -36,6 +36,29 @@ enum _AddAction {
   location,
 }
 
+Widget _menuLabel(IconData icon, String label, {TextStyle? style}) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Icon(icon, size: 18, color: style?.color),
+    const SizedBox(width: 12),
+    Text(label, style: style),
+  ],
+);
+
+IconData _visibilityIcon(String visibility) => switch (visibility) {
+  'PUBLIC' => Icons.public_outlined,
+  'PROTECTED' => Icons.group_outlined,
+  'SPACE' => Icons.folder_shared_outlined,
+  _ => Icons.lock_outline,
+};
+
+String _visibilityLabel(String visibility) => switch (visibility) {
+  'PUBLIC' => 'Öffentlich',
+  'PROTECTED' => 'Für Mitglieder',
+  'SPACE' => 'Für Bereichsmitglieder',
+  _ => 'Privat',
+};
+
 class NoteScreen extends StatefulWidget {
   final Note note;
   const NoteScreen({super.key, required this.note});
@@ -745,9 +768,15 @@ class _NoteScreenState extends State<NoteScreen> {
         if (action == 'open') _openAttachment(attachment);
         if (action == 'remove') _removeAttachment(attachment);
       },
-      itemBuilder: (_) => const [
-        PopupMenuItem(value: 'open', child: Text('Mit App öffnen')),
-        PopupMenuItem(value: 'remove', child: Text('Aus Notiz entfernen')),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'open',
+          child: _menuLabel(Icons.open_in_new, 'Mit App öffnen'),
+        ),
+        PopupMenuItem(
+          value: 'remove',
+          child: _menuLabel(Icons.link_off, 'Aus Notiz entfernen'),
+        ),
       ],
     ),
     onTap: widget.note.busy ? null : () => _openAttachment(attachment),
@@ -788,11 +817,14 @@ class _NoteScreenState extends State<NoteScreen> {
                   if (action == 'open') _openPendingAttachment(pending);
                   if (action == 'remove') _removePendingAttachment(pending);
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'open', child: Text('Mit App öffnen')),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'open',
+                    child: _menuLabel(Icons.open_in_new, 'Mit App öffnen'),
+                  ),
                   PopupMenuItem(
                     value: 'remove',
-                    child: Text('Aus Notiz entfernen'),
+                    child: _menuLabel(Icons.link_off, 'Aus Notiz entfernen'),
                   ),
                 ],
               ),
@@ -991,6 +1023,57 @@ class _NoteScreenState extends State<NoteScreen> {
         title: Text(widget.note.isLocal ? 'Neue Notiz' : 'Notiz'),
         actions: [
           PopupMenuButton<String>(
+            tooltip:
+                'Sichtbarkeit: ${_visibilityLabel(widget.note.visibility)}',
+            icon: Icon(_visibilityIcon(widget.note.visibility)),
+            onSelected: (visibility) async {
+              await s.setVisibility(widget.note, visibility);
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'PRIVATE',
+                child: _menuLabel(
+                  Icons.lock_outline,
+                  'Privat',
+                  style: widget.note.visibility == 'PRIVATE'
+                      ? const TextStyle(fontWeight: FontWeight.bold)
+                      : null,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'PUBLIC',
+                child: _menuLabel(
+                  Icons.public_outlined,
+                  'Öffentlich',
+                  style: widget.note.visibility == 'PUBLIC'
+                      ? const TextStyle(fontWeight: FontWeight.bold)
+                      : null,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'PROTECTED',
+                child: _menuLabel(
+                  Icons.group_outlined,
+                  'Für Mitglieder',
+                  style: widget.note.visibility == 'PROTECTED'
+                      ? const TextStyle(fontWeight: FontWeight.bold)
+                      : null,
+                ),
+              ),
+              if (widget.note.space != null)
+                PopupMenuItem(
+                  value: 'SPACE',
+                  child: _menuLabel(
+                    Icons.folder_shared_outlined,
+                    'Für Bereichsmitglieder',
+                    style: widget.note.visibility == 'SPACE'
+                        ? const TextStyle(fontWeight: FontWeight.bold)
+                        : null,
+                  ),
+                ),
+            ],
+          ),
+          PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
                 case 'pin':
@@ -1006,22 +1089,31 @@ class _NoteScreenState extends State<NoteScreen> {
             itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'pin',
-                child: Text(widget.note.pinned ? 'Lösen' : 'Anpinnen'),
+                child: _menuLabel(
+                  Icons.push_pin_outlined,
+                  widget.note.pinned ? 'Lösen' : 'Anpinnen',
+                ),
               ),
               if (widget.note.state == NoteState.normal)
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'archive',
-                  child: Text('Archivieren'),
+                  child: _menuLabel(Icons.archive_outlined, 'Archivieren'),
                 )
               else
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'restore',
-                  child: Text('Wiederherstellen'),
+                  child: _menuLabel(
+                    Icons.unarchive_outlined,
+                    'Wiederherstellen',
+                  ),
                 ),
               if (app.spacesSupported == true)
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'space',
-                  child: Text('Bereich zuordnen'),
+                  child: _menuLabel(
+                    Icons.folder_open_outlined,
+                    'Bereich zuordnen',
+                  ),
                 ),
             ],
           ),
@@ -1039,6 +1131,7 @@ class _NoteScreenState extends State<NoteScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
+            tooltip: 'Notiz löschen',
             onPressed: () async {
               final nav = Navigator.of(context);
               _t?.cancel();

@@ -300,6 +300,22 @@ class AppState extends ChangeNotifier {
   Future<void> restore(Note note) =>
       _updateNoteField(note, 'state', () => note.state = NoteState.normal);
 
+  Future<void> setVisibility(Note note, String visibility) async {
+    if (note.visibility == visibility) return;
+    if (visibility == 'SPACE' && note.space == null) {
+      throw ArgumentError(
+        'Für diese Sichtbarkeit muss ein Bereich zugeordnet sein.',
+      );
+    }
+    note.visibilityBeforeSpace = visibility == 'SPACE' ? note.visibility : null;
+    note.visibility = visibility;
+    note.dirty = true;
+    note.dirtyFields.add('visibility');
+    await _persist();
+    notifyListeners();
+    _schedulePush(note);
+  }
+
   Future<void> assignSpace(Note note, MemoSpace? space) async {
     if (note.space == space?.name) return;
     note.space = space?.name;

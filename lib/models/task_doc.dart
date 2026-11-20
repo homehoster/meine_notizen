@@ -188,8 +188,9 @@ List<Task> findTasks(List<Segment> segs, String query, {Task? exclude}) {
   final out = <Task>[];
   void walk(List<Task> ts) {
     for (final t in ts) {
-      if (!identical(t, exclude) && t.text.toLowerCase().contains(q))
+      if (!identical(t, exclude) && t.text.toLowerCase().contains(q)) {
         out.add(t);
+      }
       walk(t.children);
     }
   }

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/note.dart';
 import '../models/saved_view.dart';
@@ -18,6 +19,43 @@ import 'settings_screen.dart';
 void openNote(BuildContext c, Note n) =>
     Navigator.of(c)
         .push(MaterialPageRoute(builder: (_) => NoteScreen(note: n)));
+
+Widget _menuLabel(IconData icon, String label, {TextStyle? style}) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Icon(icon, size: 18, color: style?.color),
+    const SizedBox(width: 12),
+    Text(label, style: style),
+  ],
+);
+
+IconData _visibilityIcon(String visibility) => switch (visibility) {
+  'PUBLIC' => Icons.public_outlined,
+  'PROTECTED' => Icons.group_outlined,
+  'SPACE' => Icons.folder_shared_outlined,
+  _ => Icons.lock_outline,
+};
+
+String _visibilityLabel(String visibility) => switch (visibility) {
+  'PUBLIC' => 'Öffentlich',
+  'PROTECTED' => 'Für Mitglieder',
+  'SPACE' => 'Für Bereichsmitglieder',
+  _ => 'Privat',
+};
+
+Future<void> _shareNote(BuildContext context, AppState state, Note note) async {
+  final uri = Uri.parse('${state.baseUrl}/m/${Uri.encodeComponent(note.id)}');
+  try {
+    await SharePlus.instance.share(
+      ShareParams(text: uri.toString(), subject: note.title),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Notiz-Link konnte nicht geteilt werden: $e')),
+    );
+  }
+}
 
 Future<void> _editSpace(
   BuildContext context,
@@ -504,14 +542,20 @@ class HomeScreen extends StatelessWidget {
                                 _deleteSpace(context, state, space);
                               }
                             },
-                            itemBuilder: (_) => const [
+                            itemBuilder: (_) => [
                               PopupMenuItem(
                                 value: 'edit',
-                                child: Text('Bearbeiten'),
+                                child: _menuLabel(
+                                  Icons.edit_outlined,
+                                  'Bearbeiten',
+                                ),
                               ),
                               PopupMenuItem(
                                 value: 'delete',
-                                child: Text('Löschen'),
+                                child: _menuLabel(
+                                  Icons.delete_outline,
+                                  'Löschen',
+                                ),
                               ),
                             ],
                           ),
@@ -549,14 +593,20 @@ class HomeScreen extends StatelessWidget {
                               state.deleteView(view.id);
                             }
                           },
-                          itemBuilder: (_) => const [
+                          itemBuilder: (_) => [
                             PopupMenuItem(
                               value: 'edit',
-                              child: Text('Bearbeiten'),
+                              child: _menuLabel(
+                                Icons.edit_outlined,
+                                'Bearbeiten',
+                              ),
                             ),
                             PopupMenuItem(
                               value: 'delete',
-                              child: Text('Löschen'),
+                              child: _menuLabel(
+                                Icons.delete_outline,
+                                'Löschen',
+                              ),
                             ),
                           ],
                         ),
@@ -774,6 +824,8 @@ class HomeScreen extends StatelessWidget {
                                               await _chooseNoteSpace(ctx, s, n);
                                             case 'widget':
                                               await s.toggleWidget(n);
+                                            case 'share':
+                                              await _shareNote(ctx, s, n);
                                             case 'delete':
                                               await s.deleteNote(n);
                                           }
@@ -781,28 +833,47 @@ class HomeScreen extends StatelessWidget {
                                         itemBuilder: (_) => [
                                           PopupMenuItem(
                                             value: 'pin',
-                                            child: Text(
+                                            child: _menuLabel(
+                                              Icons.push_pin_outlined,
                                               n.pinned ? 'Lösen' : 'Anpinnen',
                                             ),
                                           ),
                                           if (n.state == NoteState.normal)
-                                            const PopupMenuItem(
+                                            PopupMenuItem(
                                               value: 'archive',
-                                              child: Text('Archivieren'),
+                                              child: _menuLabel(
+                                                Icons.archive_outlined,
+                                                'Archivieren',
+                                              ),
                                             )
                                           else
-                                            const PopupMenuItem(
+                                            PopupMenuItem(
                                               value: 'restore',
-                                              child: Text('Wiederherstellen'),
+                                              child: _menuLabel(
+                                                Icons.unarchive_outlined,
+                                                'Wiederherstellen',
+                                              ),
                                             ),
                                           if (s.spacesSupported == true)
-                                            const PopupMenuItem(
+                                            PopupMenuItem(
                                               value: 'space',
-                                              child: Text('Bereich zuordnen'),
+                                              child: _menuLabel(
+                                                Icons.folder_open_outlined,
+                                                'Bereich zuordnen',
+                                              ),
+                                            ),
+                                          if (!n.isLocal)
+                                            PopupMenuItem(
+                                              value: 'share',
+                                              child: _menuLabel(
+                                                Icons.share_outlined,
+                                                'Link teilen',
+                                              ),
                                             ),
                                           PopupMenuItem(
                                             value: 'widget',
-                                            child: Text(
+                                            child: _menuLabel(
+                                              Icons.widgets_outlined,
                                               s.widgetIds.contains(n.id)
                                                   ? 'Aus Widget entfernen'
                                                   : 'Im Widget anzeigen',
@@ -810,7 +881,8 @@ class HomeScreen extends StatelessWidget {
                                           ),
                                           PopupMenuItem(
                                             value: 'delete',
-                                            child: Text(
+                                            child: _menuLabel(
+                                              Icons.delete_outline,
                                               'Löschen',
                                               style: TextStyle(
                                                 color: Theme.of(context)
@@ -825,6 +897,13 @@ class HomeScreen extends StatelessWidget {
                                         const Icon(Icons.cloud_off, size: 18),
                                       if (s.widgetIds.contains(n.id))
                                         const Icon(Icons.widgets, size: 18),
+                                      Tooltip(
+                                        message: _visibilityLabel(n.visibility),
+                                        child: Icon(
+                                          _visibilityIcon(n.visibility),
+                                          size: 18,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ],
