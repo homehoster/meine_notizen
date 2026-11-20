@@ -456,6 +456,14 @@ class AppState extends ChangeNotifier {
 
   Future<void> removeAttachment(Note note, NoteAttachment attachment) async {
     if (!note.attachments.remove(attachment)) return;
+    final content = removeAttachmentImageReferences(
+      note.content,
+      attachment.name,
+    );
+    if (content != note.content) {
+      note.content = content;
+      note.dirtyFields.add('content');
+    }
     note.dirty = true;
     note.dirtyFields.add('attachments');
     await _persist();
@@ -580,22 +588,11 @@ class AppState extends ChangeNotifier {
       final values = selected.isEmpty ? ordered : selected;
       final items = <Map<String, dynamic>>[];
       for (final note in values) {
-        final attachments = <Map<String, String>>[
-          for (final attachment in note.attachments)
-            {'filename': attachment.filename, 'type': attachment.type},
-          for (final attachment in note.pendingAttachments)
-            {'filename': attachment.filename, 'type': attachment.type},
-        ];
-        final attachmentSummary = attachments.isEmpty
-            ? ''
-            : 'Anhang: ${attachments.take(2).map((a) => a['filename']).join(', ')}'
-                  '${attachments.length > 2 ? ', +${attachments.length - 2}' : ''}';
         final imagePath = await _widgetImagePath(note);
         items.add({
           'id': note.id,
           'title': note.title,
           'preview': widgetPreview(note.content),
-          'attachmentSummary': attachmentSummary,
           'imagePath': imagePath ?? '',
         });
       }

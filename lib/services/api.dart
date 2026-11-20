@@ -232,7 +232,7 @@ class MemosApi {
         _u('memos/$id/attachments'),
         body: jsonEncode({
           'attachments': attachments
-              .map((attachment) => attachment.name)
+              .map((attachment) => attachment.toJson())
               .toList(),
         }),
       ),

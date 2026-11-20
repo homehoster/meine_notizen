@@ -34,6 +34,16 @@ class NoteAttachment {
   };
 }
 
+String removeAttachmentImageReferences(String content, String attachmentName) {
+  final id = Uri.encodeComponent(attachmentName.split('/').last);
+  final imageReference = RegExp(
+    r'!\[[^\]]*\]\([^)\r\n]*/file/attachments/' +
+        RegExp.escape(id) +
+        r"""(?:[?#][^)\s]*)?(?:\s+["'][^)]*["'])?\)""",
+  );
+  return content.replaceAll(imageReference, '');
+}
+
 class PendingAttachment {
   final String path;
   final String filename;

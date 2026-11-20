@@ -18,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController token;
   late bool https;
   bool busy = false;
+  bool clearingLog = false;
 
   @override
   void initState() {
@@ -116,6 +117,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
     msg.showSnackBar(
       const SnackBar(content: Text('Server-URL und Token gelöscht')),
     );
+  }
+
+  Future<void> _clearLog() async {
+    final msg = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Logdatei löschen?'),
+        content: const Text(
+          'Das gespeicherte Diagnoseprotokoll wird gelöscht.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => clearingLog = true);
+    try {
+      await LogService.clear();
+      if (mounted) {
+        msg.showSnackBar(const SnackBar(content: Text('Logdatei gelöscht')));
+      }
+    } catch (e) {
+      if (mounted) {
+        msg.showSnackBar(
+          SnackBar(content: Text('Logdatei konnte nicht gelöscht werden: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => clearingLog = false);
+    }
   }
 
   @override
@@ -329,6 +369,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     }
                   },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  enabled: !clearingLog,
+                  leading: Icon(Icons.delete_outline, color: scheme.error),
+                  title: const Text('Logdatei löschen'),
+                  subtitle: const Text(
+                    'Gespeichertes Diagnoseprotokoll entfernen',
+                  ),
+                  onTap: clearingLog ? null : _clearLog,
                 ),
               ],
             ),

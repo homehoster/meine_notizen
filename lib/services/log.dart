@@ -74,6 +74,20 @@ class LogService {
     return _writeQueue;
   }
 
+  /// Löscht die Logdatei und alle noch nicht geschriebenen Einträge.
+  static Future<void> clear() {
+    _timer?.cancel();
+    _timer = null;
+    _buffer.clear();
+    _bufferedLines = 0;
+    _writeQueue = _writeQueue.then((_) async {
+      final file = await _logFile();
+      if (await file.exists()) await file.delete();
+      _size = 0;
+    });
+    return _writeQueue;
+  }
+
   static Future<void> _append(String text) async {
     final f = await _logFile();
     if (_size < 0) _size = await f.exists() ? await f.length() : 0;
