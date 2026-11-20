@@ -103,6 +103,83 @@ class NoteLocation {
 
 enum NoteState { normal, archived }
 
+class MemoRelation {
+  final String memoId;
+  final String relatedMemoId;
+  final String type;
+  final String? memoSnippet;
+  final String? relatedMemoSnippet;
+
+  const MemoRelation({
+    required this.memoId,
+    required this.relatedMemoId,
+    this.type = 'REFERENCE',
+    this.memoSnippet,
+    this.relatedMemoSnippet,
+  });
+
+  factory MemoRelation.fromServer(Map<String, dynamic> json) {
+    final memo = json['memo'] as Map<String, dynamic>? ?? const {};
+    final relatedMemo =
+        json['relatedMemo'] as Map<String, dynamic>? ?? const {};
+    return MemoRelation(
+      memoId: _memoId(memo['name'] as String? ?? ''),
+      relatedMemoId: _memoId(relatedMemo['name'] as String? ?? ''),
+      type: json['type'] as String? ?? 'REFERENCE',
+      memoSnippet: memo['snippet'] as String?,
+      relatedMemoSnippet: relatedMemo['snippet'] as String?,
+    );
+  }
+
+  factory MemoRelation.fromJson(Map<String, dynamic> json) => MemoRelation(
+    memoId: json['memoId'] as String,
+    relatedMemoId: json['relatedMemoId'] as String,
+    type: json['type'] as String? ?? 'REFERENCE',
+    memoSnippet: json['memoSnippet'] as String?,
+    relatedMemoSnippet: json['relatedMemoSnippet'] as String?,
+  );
+
+  String? otherMemoId(String id) {
+    if (memoId == id) return relatedMemoId;
+    if (relatedMemoId == id) return memoId;
+    return null;
+  }
+
+  String? otherMemoSnippet(String id) {
+    if (memoId == id) return relatedMemoSnippet;
+    if (relatedMemoId == id) return memoSnippet;
+    return null;
+  }
+
+  Map<String, dynamic> toServerJson() => {
+    'memo': {'name': 'memos/$memoId'},
+    'relatedMemo': {'name': 'memos/$relatedMemoId'},
+    'type': type,
+  };
+
+  Map<String, dynamic> toJson() => {
+    'memoId': memoId,
+    'relatedMemoId': relatedMemoId,
+    'type': type,
+    if (memoSnippet != null) 'memoSnippet': memoSnippet,
+    if (relatedMemoSnippet != null) 'relatedMemoSnippet': relatedMemoSnippet,
+  };
+}
+
+String _memoId(String name) => name.split('/').last;
+
+List<Note> filterNotesByQuery(Iterable<Note> notes, String query) {
+  final normalizedQuery = query.trim().toLowerCase();
+  if (normalizedQuery.isEmpty) return notes.toList();
+  return notes
+      .where(
+        (note) =>
+            note.title.toLowerCase().contains(normalizedQuery) ||
+            note.content.toLowerCase().contains(normalizedQuery),
+      )
+      .toList();
+}
+
 class Note {
   String id;
   String content;
@@ -118,6 +195,7 @@ class Note {
   List<String> tags;
   List<NoteAttachment> attachments;
   List<PendingAttachment> pendingAttachments;
+  List<MemoRelation> relations;
   NoteLocation? location;
   final Set<String> dirtyFields;
 
@@ -135,16 +213,26 @@ class Note {
     List<String>? tags,
     List<NoteAttachment>? attachments,
     List<PendingAttachment>? pendingAttachments,
+    List<MemoRelation>? relations,
     this.location,
     Set<String>? dirtyFields,
   }) : tags = tags ?? _extractTags(content),
        attachments = attachments ?? [],
        pendingAttachments = pendingAttachments ?? [],
+       relations = relations ?? [],
        dirtyFields = dirtyFields ?? {};
 
   bool get isLocal => id.startsWith('local-');
 
   bool get hasPendingMedia => pendingAttachments.isNotEmpty || location != null;
+
+  List<String> get relatedMemoIds => relations
+      .where((relation) => relation.type == 'REFERENCE')
+      .map((relation) => relation.otherMemoId(id))
+      .whereType<String>()
+      .where((relatedId) => relatedId.isNotEmpty && relatedId != id)
+      .toSet()
+      .toList();
 
   String get title {
     for (final l in content.split('\n')) {
@@ -185,6 +273,10 @@ class Note {
         .whereType<Map<String, dynamic>>()
         .map(NoteAttachment.fromServer)
         .toList(),
+    relations: (json['relations'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(MemoRelation.fromServer)
+        .toList(),
     location: json['location'] is Map<String, dynamic>
         ? NoteLocation.fromJson(json['location'] as Map<String, dynamic>)
         : null,
@@ -212,6 +304,10 @@ class Note {
         .whereType<Map<String, dynamic>>()
         .map(PendingAttachment.fromJson)
         .toList(),
+    relations: (json['relations'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(MemoRelation.fromJson)
+        .toList(),
     location: json['location'] is Map<String, dynamic>
         ? NoteLocation.fromJson(json['location'] as Map<String, dynamic>)
         : null,
@@ -238,6 +334,7 @@ class Note {
     'pendingAttachments': pendingAttachments
         .map((attachment) => attachment.toJson())
         .toList(),
+    'relations': relations.map((relation) => relation.toJson()).toList(),
     'location': location?.toJson(),
     'dirtyFields': dirtyFields.toList(),
   };

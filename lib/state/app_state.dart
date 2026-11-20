@@ -334,6 +334,48 @@ class AppState extends ChangeNotifier {
     _schedulePush(note);
   }
 
+  Future<void> addMemoReference(Note note, Note relatedNote) async {
+    if (note.isLocal || relatedNote.isLocal) {
+      throw StateError('Beide Notizen müssen bereits synchronisiert sein.');
+    }
+    if (note.id == relatedNote.id ||
+        note.relatedMemoIds.contains(relatedNote.id)) {
+      return;
+    }
+    note.relations.add(
+      MemoRelation(
+        memoId: note.id,
+        relatedMemoId: relatedNote.id,
+        relatedMemoSnippet: relatedNote.title,
+      ),
+    );
+    await _saveMemoRelations(note);
+  }
+
+  Future<void> removeMemoReference(MemoRelation relation) async {
+    final note = byId(relation.memoId);
+    if (note == null) {
+      throw StateError('Die verknüpfte Notiz ist nicht verfügbar.');
+    }
+    final oldLength = note.relations.length;
+    note.relations.removeWhere(
+      (existing) =>
+          existing.memoId == relation.memoId &&
+          existing.relatedMemoId == relation.relatedMemoId &&
+          existing.type == relation.type,
+    );
+    if (note.relations.length == oldLength) return;
+    await _saveMemoRelations(note);
+  }
+
+  Future<void> _saveMemoRelations(Note note) async {
+    note.dirty = true;
+    note.dirtyFields.add('relations');
+    await _persist();
+    notifyListeners();
+    _schedulePush(note);
+  }
+
   Future<void> _updateNoteField(
     Note note,
     String field,
@@ -521,6 +563,11 @@ class AppState extends ChangeNotifier {
     await _persist();
     notifyListeners();
     _schedulePush(note);
+  }
+
+  Future<void> removeLocation(Note note) async {
+    if (note.location == null) return;
+    await _updateNoteField(note, 'location', () => note.location = null);
   }
 
   Future<void> toggleWidget(Note note) async {
@@ -757,6 +804,7 @@ class AppState extends ChangeNotifier {
     }
     note.busy = true;
     var changedMeanwhile = false;
+    final dirtyFieldsAtStart = Set<String>.of(note.dirtyFields);
     try {
       if (note.deleted) {
         if (!note.isLocal) await _api.delete(note.id);
@@ -790,9 +838,7 @@ class AppState extends ChangeNotifier {
             case 'space':
               fields['space'] = note.space ?? '';
             case 'location':
-              if (note.location != null) {
-                fields['location'] = note.location!.toJson();
-              }
+              fields['location'] = note.location?.toJson();
           }
         }
         if (fields.isNotEmpty) {
@@ -807,6 +853,35 @@ class AppState extends ChangeNotifier {
             } else {
               changedMeanwhile = true;
             }
+          }
+        }
+
+        if (note.dirtyFields.contains('relations')) {
+          final references = note.relations
+              .where(
+                (relation) =>
+                    relation.memoId == note.id && relation.type == 'REFERENCE',
+              )
+              .toList();
+          final sentRelations = jsonEncode(
+            references.map((relation) => relation.toServerJson()).toList(),
+          );
+          await _api.setMemoRelations(note.id, references);
+          final currentRelations = note.relations
+              .where(
+                (relation) =>
+                    relation.memoId == note.id && relation.type == 'REFERENCE',
+              )
+              .toList();
+          if (jsonEncode(
+                currentRelations
+                    .map((relation) => relation.toServerJson())
+                    .toList(),
+              ) ==
+              sentRelations) {
+            note.dirtyFields.remove('relations');
+          } else {
+            changedMeanwhile = true;
           }
         }
 
@@ -843,6 +918,11 @@ class AppState extends ChangeNotifier {
           }
         }
 
+        if (note.dirtyFields.any(
+          (field) => !dirtyFieldsAtStart.contains(field),
+        )) {
+          changedMeanwhile = true;
+        }
         note.dirty =
             note.dirtyFields.isNotEmpty || note.pendingAttachments.isNotEmpty;
       }
@@ -917,6 +997,7 @@ class AppState extends ChangeNotifier {
           current.space = serverNote.space;
           current.tags = serverNote.tags;
           current.attachments = serverNote.attachments;
+          current.relations = serverNote.relations;
           current.location = serverNote.location;
         }
         merged.add(current);

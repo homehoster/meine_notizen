@@ -239,6 +239,21 @@ class MemosApi {
     );
   }
 
+  Future<void> setMemoRelations(String id, List<MemoRelation> relations) async {
+    _check(
+      await _send(
+        'PATCH',
+        _u('memos/$id/relations'),
+        body: jsonEncode({
+          'name': 'memos/$id',
+          'relations': relations
+              .map((relation) => relation.toServerJson())
+              .toList(),
+        }),
+      ),
+    );
+  }
+
   Future<NoteAttachment> uploadAttachment(PendingAttachment pending) async {
     final file = File(pending.path);
     if (!await file.exists()) {

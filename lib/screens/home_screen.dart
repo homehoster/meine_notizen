@@ -44,7 +44,9 @@ String _visibilityLabel(String visibility) => switch (visibility) {
 };
 
 Future<void> _shareNote(BuildContext context, AppState state, Note note) async {
-  final uri = Uri.parse('${state.baseUrl}/m/${Uri.encodeComponent(note.id)}');
+  final uri = Uri.parse(
+    '${state.baseUrl}memos/${Uri.encodeComponent(note.id)}',
+  );
   try {
     await SharePlus.instance.share(
       ShareParams(text: uri.toString(), subject: note.title),
@@ -401,8 +403,41 @@ class _DrawerSection {
   double get needed => 48.0 + count * 52.0;
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _searchController = TextEditingController();
+  bool _isSearchOpen = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _searchChanged(String query) {
+    if (query.trim().isNotEmpty &&
+        context.read<AppState>().navigation.kind != NavigationKind.all) {
+      context.read<AppState>().select(
+        const NavigationTarget(NavigationKind.all),
+      );
+    }
+    setState(() {});
+  }
+
+  void _toggleSearch() {
+    if (_isSearchOpen) {
+      _searchController.clear();
+      setState(() => _isSearchOpen = false);
+      return;
+    }
+    setState(() => _isSearchOpen = true);
+  }
 
   Widget _buildDrawer(BuildContext context, AppState state) {
     final theme = Theme.of(context);
@@ -730,11 +765,19 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final notes = s.selectedNotes;
+    final query = _searchController.text.trim();
+    final notes = query.isEmpty
+        ? s.selectedNotes
+        : filterNotesByQuery(s.visible, query);
     return Scaffold(
       appBar: AppBar(
         title: Text(s.screenTitle),
         actions: [
+          IconButton(
+            tooltip: _isSearchOpen ? 'Suche schließen' : 'Notizen suchen',
+            icon: Icon(_isSearchOpen ? Icons.close : Icons.search),
+            onPressed: _toggleSearch,
+          ),
           if (s.syncing)
             const Padding(
               padding: EdgeInsets.all(14),
@@ -768,6 +811,32 @@ class HomeScreen extends StatelessWidget {
               actions: [
                 TextButton(onPressed: s.sync, child: const Text('Erneut')),
               ],
+            ),
+          if (_isSearchOpen)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: _searchChanged,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'Notizen suchen',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Suche löschen',
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            _searchChanged('');
+                          },
+                        ),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
             ),
           Expanded(
             child: !s.configured && notes.isEmpty

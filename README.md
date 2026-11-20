@@ -37,6 +37,8 @@ Das Hauptaugenmerk liegt auf einer **leichten Erfassung**: Listen, Aufgaben und 
 - 🔎 **Keine Doppelten** – tippst du einen Eintrag, den es in der Notiz schon gibt, schlägt die App den vorhandenen vor und öffnet ihn auf Wunsch wieder, statt ihn doppelt anzulegen.
 - 🖊️ **Markdown-Werkzeugleiste** – Rückgängig, Überschrift 1/2, normaler Text, fett, kursiv, Aufzählung, Nummerierung, Aufgabe, Link, Code und Zitat.
 - 🗂️ **Übersicht als Karten** – jede Notiz zeigt Überschrift und die ersten Zeilen in der Ansicht, damit du sofort erkennst, worum es geht.
+- 🔎 **Notizen suchen** – die Suche auf der Startseite filtert alle aktiven Notizen; beim Hinzufügen einer Verknüpfung kann ebenfalls nach Notizen gesucht werden.
+- 🔗 **Notizen verknüpfen** – verknüpfte Memos werden in der Notiz angezeigt. Verknüpfungen lassen sich über die Suche hinzufügen und wieder entfernen.
 - 🧭 **Archiv, Bereiche, Ansichten und Tags** – Notizen archivieren, Memos-Bereichen zuordnen und eigene lokale Filteransichten anlegen.
 - 📌 **Notizen organisieren** – anheften, einem Bereich zuordnen und Tags direkt über das Seitenmenü filtern.
 - 📎 **Anhänge und Medien** – Dateien, Bilder, Zeichnungen/Markierungen, Audioaufnahmen und den aktuellen Standort zu einer Notiz hinzufügen.
@@ -80,6 +82,7 @@ Die App funktioniert auch ohne Server. Möchtest du deine Notizen mit deiner eig
 - Neue Notizen werden in Memos als **privat** angelegt.
 - **Bereiche** verwenden Memos-Spaces und sind nur sichtbar, wenn der Server die Spaces-API unterstützt. Beim Verschieben in einen Bereich wird die Notiz für dessen Mitglieder sichtbar; beim Entfernen wird die vorherige Sichtbarkeit wiederhergestellt.
 - Archiv, Anheften und Anhänge werden mit Memos synchronisiert. **Ansichten** werden lokal auf dem Gerät gespeichert.
+- Memo-Verknüpfungen werden als Memos-Referenzbeziehungen synchronisiert und benötigen eine Instanz mit Relations-API-Unterstützung.
 - Datei-, Kamera-, Mikrofon- und Standortberechtigungen fragt das Betriebssystem bei Bedarf ab. Unbekannte Dateitypen werden in der App nicht ausgeführt oder außerhalb der App geöffnet.
 - Änderungen werden lokal sofort gespeichert und kurz nach dem Tippen bzw. beim Verlassen der Notiz und beim Wechsel in den Hintergrund zum Server gesendet.
 - Mit Ziehen nach unten auf der Startseite oder dem Sync-Symbol startest du die Synchronisation manuell.

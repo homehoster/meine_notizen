@@ -40,4 +40,57 @@ void main() {
     });
     client.close();
   });
+
+  test('replaces memo reference relations on the relation endpoint', () async {
+    late http.Request sentRequest;
+    late Map<String, dynamic> body;
+    final client = MockClient((request) async {
+      sentRequest = request;
+      body = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response('', 200);
+    });
+    final api = MemosApi.withClient(
+      'https://memos.example.com',
+      'token',
+      client,
+    );
+
+    await api.setMemoRelations('memo-id', [
+      const MemoRelation(memoId: 'memo-id', relatedMemoId: 'related-id'),
+    ]);
+
+    expect(sentRequest.method, 'PATCH');
+    expect(sentRequest.url.path, '/api/memos/memo-id/relations');
+    expect(body, {
+      'name': 'memos/memo-id',
+      'relations': [
+        {
+          'memo': {'name': 'memos/memo-id'},
+          'relatedMemo': {'name': 'memos/related-id'},
+          'type': 'REFERENCE',
+        },
+      ],
+    });
+    client.close();
+  });
+
+  test('sends a null location with its update mask when clearing it', () async {
+    late http.Request sentRequest;
+    final client = MockClient((request) async {
+      sentRequest = request;
+      return http.Response('', 200);
+    });
+    final api = MemosApi.withClient(
+      'https://memos.example.com',
+      'token',
+      client,
+    );
+
+    await api.updateMemo('memo-id', {'location': null});
+
+    expect(sentRequest.method, 'PATCH');
+    expect(sentRequest.url.queryParameters['updateMask'], 'location');
+    expect(jsonDecode(sentRequest.body), {'location': null});
+    client.close();
+  });
 }

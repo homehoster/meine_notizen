@@ -34,6 +34,7 @@ enum _AddAction {
   markImage,
   audio,
   location,
+  memoReference,
 }
 
 Widget _menuLabel(IconData icon, String label, {TextStyle? style}) => Row(
@@ -249,10 +250,11 @@ class _NoteScreenState extends State<NoteScreen> {
     final action = await showModalBottomSheet<_AddAction>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       builder: (context) => SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.9,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -272,10 +274,11 @@ class _NoteScreenState extends State<NoteScreen> {
                   ListTile(
                     leading: const Icon(Icons.format_list_numbered),
                     title: const Text('Nummerierung hinzufügen'),
-                    onTap: () => Navigator.pop(context, _AddAction.numbered),
+                    onTap: () =>
+                        Navigator.pop(context, _AddAction.numbered),
                   ),
+                  const Divider(height: 1),
                 ],
-                const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.attach_file),
                   title: const Text('Datei anhängen'),
@@ -292,14 +295,14 @@ class _NoteScreenState extends State<NoteScreen> {
                   onTap: () => Navigator.pop(context, _AddAction.camera),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.draw_outlined),
-                  title: const Text('Zeichnung / Markierung'),
-                  onTap: () => Navigator.pop(context, _AddAction.drawing),
-                ),
-                ListTile(
                   leading: const Icon(Icons.brush_outlined),
                   title: const Text('Bild markieren'),
                   onTap: () => Navigator.pop(context, _AddAction.markImage),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.draw_outlined),
+                  title: const Text('Zeichnung / Markierung'),
+                  onTap: () => Navigator.pop(context, _AddAction.drawing),
                 ),
                 ListTile(
                   leading: const Icon(Icons.mic_none),
@@ -309,7 +312,14 @@ class _NoteScreenState extends State<NoteScreen> {
                 ListTile(
                   leading: const Icon(Icons.location_on_outlined),
                   title: const Text('Aktuellen Standort hinzufügen'),
-                  onTap: () => Navigator.pop(context, _AddAction.location),
+                  onTap: () =>
+                      Navigator.pop(context, _AddAction.location),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.link),
+                  title: const Text('Verknüpfte Notiz hinzufügen'),
+                  onTap: () =>
+                      Navigator.pop(context, _AddAction.memoReference),
                 ),
               ],
             ),
@@ -339,6 +349,8 @@ class _NoteScreenState extends State<NoteScreen> {
         await _recordAudio();
       case _AddAction.location:
         await _addLocation();
+      case _AddAction.memoReference:
+        await _addMemoReference();
     }
   }
 
@@ -679,10 +691,102 @@ class _NoteScreenState extends State<NoteScreen> {
     }
   }
 
+  Future<void> _removeLocation() async {
+    try {
+      await s.removeLocation(widget.note);
+    } catch (e) {
+      await _showError('Standort konnte nicht entfernt werden: $e');
+    }
+  }
+
   String _formatSize(int size) {
     if (size < 1024) return '$size B';
     if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
     return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _addMemoReference() async {
+    if (widget.note.isLocal) {
+      await _showError('Die Notiz muss zuerst synchronisiert werden.');
+      return;
+    }
+    final relatedNote = await showDialog<Note>(
+      context: context,
+      builder: (_) => _MemoSearchDialog(
+        noteId: widget.note.id,
+        excludedIds: widget.note.relatedMemoIds.toSet(),
+      ),
+    );
+    if (relatedNote == null || !mounted) return;
+    try {
+      await s.addMemoReference(widget.note, relatedNote);
+    } catch (e) {
+      await _showError('Verknüpfung konnte nicht hinzugefügt werden: $e');
+    }
+  }
+
+  Widget _linkedMemos({bool compact = false}) {
+    final relationsById = <String, MemoRelation>{};
+    for (final relation in widget.note.relations) {
+      if (relation.type != 'REFERENCE') continue;
+      final id = relation.otherMemoId(widget.note.id);
+      if (id != null && id.isNotEmpty && id != widget.note.id) {
+        relationsById.putIfAbsent(id, () => relation);
+      }
+    }
+
+    Widget tile(String id, MemoRelation relation) {
+      final linkedNote = s.byId(id);
+      final title =
+          linkedNote?.title ??
+          relation.otherMemoSnippet(widget.note.id) ??
+          'Memo $id';
+      return ListTile(
+        dense: compact,
+        leading: const Icon(Icons.sticky_note_2_outlined),
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: linkedNote == null ? Text('Memo $id') : null,
+        onTap: linkedNote == null
+            ? null
+            : () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => NoteScreen(note: linkedNote)),
+              ),
+        trailing: IconButton(
+          tooltip: 'Verknüpfung entfernen',
+          icon: const Icon(Icons.link_off),
+          onPressed: widget.note.busy
+              ? null
+              : () async {
+                  try {
+                    await s.removeMemoReference(relation);
+                  } catch (e) {
+                    await _showError(
+                      'Verknüpfung konnte nicht entfernt werden: $e',
+                    );
+                  }
+                },
+        ),
+      );
+    }
+
+    final entries = relationsById.entries.toList();
+    if (entries.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (compact)
+          SizedBox(
+            height: 64,
+            child: ListView(
+              children: [
+                for (final entry in entries) tile(entry.key, entry.value),
+              ],
+            ),
+          )
+        else
+          for (final entry in entries) tile(entry.key, entry.value),
+      ],
+    );
   }
 
   Widget _imageAttachmentPreview(NoteAttachment attachment) {
@@ -761,23 +865,10 @@ class _NoteScreenState extends State<NoteScreen> {
     ),
     title: Text(attachment.filename),
     subtitle: Text('${attachment.type} · ${_formatSize(attachment.size)}'),
-    trailing: PopupMenuButton<String>(
-      enabled: !widget.note.busy,
-      tooltip: 'Anhangoptionen',
-      onSelected: (action) {
-        if (action == 'open') _openAttachment(attachment);
-        if (action == 'remove') _removeAttachment(attachment);
-      },
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          value: 'open',
-          child: _menuLabel(Icons.open_in_new, 'Mit App öffnen'),
-        ),
-        PopupMenuItem(
-          value: 'remove',
-          child: _menuLabel(Icons.link_off, 'Aus Notiz entfernen'),
-        ),
-      ],
+    trailing: IconButton(
+      tooltip: 'Anhang entfernen',
+      icon: const Icon(Icons.delete_outline),
+      onPressed: widget.note.busy ? null : () => _removeAttachment(attachment),
     ),
     onTap: widget.note.busy ? null : () => _openAttachment(attachment),
   );
@@ -810,23 +901,12 @@ class _NoteScreenState extends State<NoteScreen> {
                     ? 'Wird synchronisiert'
                     : 'Hochgeladen, Verknüpfung ausstehend',
               ),
-              trailing: PopupMenuButton<String>(
-                enabled: !note.busy,
-                tooltip: 'Anhangoptionen',
-                onSelected: (action) {
-                  if (action == 'open') _openPendingAttachment(pending);
-                  if (action == 'remove') _removePendingAttachment(pending);
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: 'open',
-                    child: _menuLabel(Icons.open_in_new, 'Mit App öffnen'),
-                  ),
-                  PopupMenuItem(
-                    value: 'remove',
-                    child: _menuLabel(Icons.link_off, 'Aus Notiz entfernen'),
-                  ),
-                ],
+              trailing: IconButton(
+                tooltip: 'Anhang entfernen',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: note.busy
+                    ? null
+                    : () => _removePendingAttachment(pending),
               ),
               onTap: note.busy ? null : () => _openPendingAttachment(pending),
             ),
@@ -841,11 +921,15 @@ class _NoteScreenState extends State<NoteScreen> {
               '${location.latitude.toStringAsFixed(5)}, '
               '${location.longitude.toStringAsFixed(5)}',
             ),
+            trailing: IconButton(
+              tooltip: 'Standort entfernen',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: note.busy ? null : _removeLocation,
+            ),
             onTap: () => _openLink(
               'https://maps.google.com/?q=${location.latitude},${location.longitude}',
             ),
           ),
-        const Divider(),
       ],
     );
   }
@@ -986,6 +1070,7 @@ class _NoteScreenState extends State<NoteScreen> {
                 blockMarkdownImages: blockMarkdownImages,
               ),
           _attachments(),
+          _linkedMemos(),
         ],
       );
     }
@@ -1010,6 +1095,7 @@ class _NoteScreenState extends State<NoteScreen> {
             ),
           ),
         ),
+        _linkedMemos(compact: true),
       ],
     );
   }
@@ -1173,6 +1259,91 @@ class _NoteScreenState extends State<NoteScreen> {
               child: const Icon(Icons.add),
             )
           : null,
+    );
+  }
+}
+
+class _MemoSearchDialog extends StatefulWidget {
+  final String noteId;
+  final Set<String> excludedIds;
+
+  const _MemoSearchDialog({required this.noteId, required this.excludedIds});
+
+  @override
+  State<_MemoSearchDialog> createState() => _MemoSearchDialogState();
+}
+
+class _MemoSearchDialogState extends State<_MemoSearchDialog> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final candidates = app.notes.where(
+      (note) =>
+          !note.deleted &&
+          !note.isLocal &&
+          note.id != widget.noteId &&
+          !widget.excludedIds.contains(note.id),
+    );
+    final results = filterNotesByQuery(candidates, _query);
+
+    return AlertDialog(
+      title: const Text('Notiz verknüpfen'),
+      content: SizedBox(
+        width: 420,
+        height: 420,
+        child: Column(
+          children: [
+            TextField(
+              autofocus: true,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: const InputDecoration(
+                hintText: 'Notizen suchen',
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: results.isEmpty
+                  ? Center(
+                      child: Text(
+                        _query.trim().isEmpty
+                            ? 'Keine Notizen verfügbar'
+                            : 'Keine passenden Notizen',
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: results.length,
+                      itemBuilder: (context, index) {
+                        final note = results[index];
+                        return ListTile(
+                          title: Text(
+                            note.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: note.preview.isEmpty
+                              ? null
+                              : Text(
+                                  note.preview,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                          onTap: () => Navigator.pop(context, note),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Abbrechen'),
+        ),
+      ],
     );
   }
 }
