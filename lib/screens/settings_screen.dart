@@ -265,6 +265,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
           const _SectionHeader(
+            title: 'Bearbeitung',
+            icon: Icons.edit_note_outlined,
+          ),
+          Card(
+            child: SwitchListTile(
+              secondary: const Icon(Icons.playlist_add_check_outlined),
+              title: const Text('Unterstützte Bearbeitung'),
+              subtitle: const Text(
+                'Erledigte Aufgaben ausblenden sowie Listen direkt bearbeiten, '
+                'ergänzen und verschieben',
+              ),
+              value: s.assistedEditingEnabled,
+              onChanged: s.setAssistedEditingEnabled,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const _SectionHeader(
             title: 'Datenschutz',
             icon: Icons.privacy_tip_outlined,
           ),

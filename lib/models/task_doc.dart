@@ -235,17 +235,16 @@ bool hasDoneTask(Task task) => task.done || task.children.any(hasDoneTask);
 int countOpen(List<Task> ts) =>
     ts.fold(0, (n, t) => n + (t.done ? 0 : 1) + countOpen(t.children));
 
-/// Verschiebt innerhalb der sichtbaren (gefilterten) Liste.
+/// Verschiebt innerhalb der sichtbaren Liste; [newIndex] ist der Zielindex nach dem Entfernen.
 void reorderVisible(
   List<Task> all,
   bool Function(Task) vis,
-  int oldI,
-  int newI,
+  int oldIndex,
+  int newIndex,
 ) {
   final visible = all.where(vis).toList();
-  if (newI > oldI) newI -= 1;
-  final item = visible.removeAt(oldI);
-  visible.insert(newI, item);
+  final item = visible.removeAt(oldIndex);
+  visible.insert(newIndex, item);
   var k = 0;
   for (var i = 0; i < all.length; i++) {
     if (vis(all[i])) all[i] = visible[k++];

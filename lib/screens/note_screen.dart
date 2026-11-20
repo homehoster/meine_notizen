@@ -1,17 +1,17 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -49,7 +49,7 @@ class _NoteScreenState extends State<NoteScreen> {
   late final TaskEditCtx edit;
   final UndoHistoryController _undo = UndoHistoryController();
   final ImagePicker _imagePicker = ImagePicker();
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  final Map<String, Future<Uint8List>> _attachmentBytes = {};
   List<Segment> segs = [];
   int mode = 0; // 0 Ansicht, 1 Editor (Markdown)
   Timer? _t;
@@ -73,7 +73,6 @@ class _NoteScreenState extends State<NoteScreen> {
     s.finishEditing(widget.note, c.text);
     c.dispose();
     _undo.dispose();
-    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -170,6 +169,7 @@ class _NoteScreenState extends State<NoteScreen> {
   }
 
   void _addListItem(TaskListType type) {
+    if (!s.assistedEditingEnabled) return;
     final t = Task('');
     setState(() {
       if (segs.isNotEmpty &&
@@ -196,73 +196,101 @@ class _NoteScreenState extends State<NoteScreen> {
       '.txt' => 'text/plain',
       '.md' => 'text/markdown',
       '.json' => 'application/json',
+      '.csv' => 'text/csv',
+      '.rtf' => 'application/rtf',
+      '.doc' => 'application/msword',
+      '.docx' =>
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls' => 'application/vnd.ms-excel',
+      '.xlsx' =>
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt' => 'application/vnd.ms-powerpoint',
+      '.pptx' =>
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.zip' => 'application/zip',
       '.m4a' => 'audio/mp4',
       '.mp3' => 'audio/mpeg',
+      '.aac' => 'audio/aac',
       '.wav' => 'audio/wav',
       '.ogg' => 'audio/ogg',
+      '.flac' => 'audio/flac',
+      '.mp4' => 'video/mp4',
+      '.mov' => 'video/quicktime',
+      '.3gp' => 'video/3gpp',
       _ => 'application/octet-stream',
     };
   }
 
   Future<void> _showAddMenu() async {
+    final assistedEditingEnabled = s.assistedEditingEnabled;
     final action = await showModalBottomSheet<_AddAction>(
       context: context,
+      isScrollControlled: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.check_box_outlined),
-              title: const Text('Aufgabe hinzufügen'),
-              onTap: () => Navigator.pop(context, _AddAction.task),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (assistedEditingEnabled) ...[
+                  ListTile(
+                    leading: const Icon(Icons.check_box_outlined),
+                    title: const Text('Aufgabe hinzufügen'),
+                    onTap: () => Navigator.pop(context, _AddAction.task),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.format_list_bulleted),
+                    title: const Text('Aufzählung hinzufügen'),
+                    onTap: () => Navigator.pop(context, _AddAction.bullet),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.format_list_numbered),
+                    title: const Text('Nummerierung hinzufügen'),
+                    onTap: () => Navigator.pop(context, _AddAction.numbered),
+                  ),
+                ],
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.attach_file),
+                  title: const Text('Datei anhängen'),
+                  onTap: () => Navigator.pop(context, _AddAction.file),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.image_outlined),
+                  title: const Text('Bild auswählen'),
+                  onTap: () => Navigator.pop(context, _AddAction.image),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Foto aufnehmen'),
+                  onTap: () => Navigator.pop(context, _AddAction.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.draw_outlined),
+                  title: const Text('Zeichnung / Markierung'),
+                  onTap: () => Navigator.pop(context, _AddAction.drawing),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.brush_outlined),
+                  title: const Text('Bild markieren'),
+                  onTap: () => Navigator.pop(context, _AddAction.markImage),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.mic_none),
+                  title: const Text('Audio aufnehmen'),
+                  onTap: () => Navigator.pop(context, _AddAction.audio),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.location_on_outlined),
+                  title: const Text('Aktuellen Standort hinzufügen'),
+                  onTap: () => Navigator.pop(context, _AddAction.location),
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.format_list_bulleted),
-              title: const Text('Aufzählung hinzufügen'),
-              onTap: () => Navigator.pop(context, _AddAction.bullet),
-            ),
-            ListTile(
-              leading: const Icon(Icons.format_list_numbered),
-              title: const Text('Nummerierung hinzufügen'),
-              onTap: () => Navigator.pop(context, _AddAction.numbered),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.attach_file),
-              title: const Text('Datei anhängen'),
-              onTap: () => Navigator.pop(context, _AddAction.file),
-            ),
-            ListTile(
-              leading: const Icon(Icons.image_outlined),
-              title: const Text('Bild auswählen'),
-              onTap: () => Navigator.pop(context, _AddAction.image),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Foto aufnehmen'),
-              onTap: () => Navigator.pop(context, _AddAction.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.draw_outlined),
-              title: const Text('Zeichnung / Markierung'),
-              onTap: () => Navigator.pop(context, _AddAction.drawing),
-            ),
-            ListTile(
-              leading: const Icon(Icons.brush_outlined),
-              title: const Text('Bild markieren'),
-              onTap: () => Navigator.pop(context, _AddAction.markImage),
-            ),
-            ListTile(
-              leading: const Icon(Icons.mic_none),
-              title: const Text('Audio aufnehmen'),
-              onTap: () => Navigator.pop(context, _AddAction.audio),
-            ),
-            ListTile(
-              leading: const Icon(Icons.location_on_outlined),
-              title: const Text('Aktuellen Standort hinzufügen'),
-              onTap: () => Navigator.pop(context, _AddAction.location),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -527,65 +555,104 @@ class _NoteScreenState extends State<NoteScreen> {
 
   Future<void> _openAttachment(NoteAttachment attachment) async {
     try {
-      final bytes = await s.fetchAttachment(attachment.name);
-      if (!mounted) return;
-      if (attachment.type.startsWith('audio/')) {
-        await _audioPlayer.play(BytesSource(Uint8List.fromList(bytes)));
-        return;
-      }
-      if (attachment.type.startsWith('image/')) {
-        await showDialog<void>(
-          context: context,
-          builder: (context) => Dialog(
-            child: InteractiveViewer(
-              child: Image.memory(
-                Uint8List.fromList(bytes),
-                fit: BoxFit.contain,
-              ),
-            ),
-          ),
-        );
-        return;
-      }
-      if (attachment.type.startsWith('text/') ||
-          attachment.type == 'application/json') {
-        final text = utf8.decode(bytes, allowMalformed: true);
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(attachment.filename),
-            content: SizedBox(
-              width: 640,
-              child: SingleChildScrollView(child: SelectableText(text)),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Schließen'),
-              ),
-            ],
-          ),
-        );
-        return;
-      }
-      await showDialog<void>(
+      final bytes = attachment.type.startsWith('image/')
+          ? await _attachmentBytes.putIfAbsent(attachment.name, () async {
+              return Uint8List.fromList(await s.fetchAttachment(attachment.name));
+            })
+          : Uint8List.fromList(await s.fetchAttachment(attachment.name));
+      final directory = await getTemporaryDirectory();
+      final filename = p
+          .basename(attachment.filename)
+          .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final file = File(
+        p.join(
+          directory.path,
+          '${DateTime.now().microsecondsSinceEpoch}-${filename.isEmpty ? 'attachment' : filename}',
+        ),
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      await _openWithOperatingSystem(file.path, attachment.type);
+    } catch (e) {
+      _attachmentBytes.remove(attachment.name);
+      await _showError('Anhang konnte nicht geöffnet werden: $e');
+    }
+  }
+
+  Future<void> _openPendingAttachment(PendingAttachment attachment) async {
+    try {
+      await _openWithOperatingSystem(attachment.path, attachment.type);
+    } catch (e) {
+      await _showError('Anhang konnte nicht geöffnet werden: $e');
+    }
+  }
+
+  Future<void> _openWithOperatingSystem(String path, String type) async {
+    final result = await OpenFilex.open(path, type: type);
+    if (!mounted || result.type == ResultType.done) return;
+    await _showError(
+      result.type == ResultType.noAppToOpen
+          ? 'Keine passende App zum Öffnen gefunden.'
+          : 'Öffnen fehlgeschlagen: ${result.message}',
+    );
+  }
+
+  Future<bool> _confirmRemoveAttachment(
+    String filename, {
+    required bool local,
+  }) async =>
+      await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(attachment.filename),
+          title: const Text('Anhang entfernen?'),
           content: Text(
-            '${attachment.type}\n${_formatSize(attachment.size)}\n\n'
-            'Dieser Dateityp wird nicht ausgeführt oder außerhalb der App geöffnet.',
+            '„$filename“ wird aus dieser Notiz entfernt. '
+            '${local ? 'Die lokale Datei wird gelöscht.' : 'Die Datei wird dadurch nicht global vom Server gelöscht.'}',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Schließen'),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Entfernen'),
             ),
           ],
         ),
-      );
+      ) ??
+      false;
+
+  Future<void> _removeAttachment(NoteAttachment attachment) async {
+    if (!await _confirmRemoveAttachment(
+          attachment.filename,
+          local: false,
+        ) ||
+        !mounted) {
+      return;
+    }
+    try {
+      await s.removeAttachment(widget.note, attachment);
+      _attachmentBytes.remove(attachment.name);
     } catch (e) {
-      await _showError('Anhang konnte nicht geöffnet werden: $e');
+      await _showError('Anhang konnte nicht entfernt werden: $e');
+    }
+  }
+
+  Future<void> _removePendingAttachment(PendingAttachment attachment) async {
+    if (!await _confirmRemoveAttachment(
+          attachment.filename,
+          local: true,
+        ) ||
+        !mounted) {
+      return;
+    }
+    try {
+      await s.removePendingAttachment(widget.note, attachment);
+      if (attachment.uploadedName case final name?) {
+        _attachmentBytes.remove(name);
+      }
+    } catch (e) {
+      await _showError('Anhang konnte nicht entfernt werden: $e');
     }
   }
 
@@ -594,6 +661,97 @@ class _NoteScreenState extends State<NoteScreen> {
     if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
     return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
+
+  Widget _imageAttachmentPreview(NoteAttachment attachment) {
+    final future = _attachmentBytes.putIfAbsent(attachment.name, () async {
+      return Uint8List.fromList(await s.fetchAttachment(attachment.name));
+    });
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        onTap: () => _openAttachment(attachment),
+        child: SizedBox(
+          width: double.infinity,
+          height: 240,
+          child: FutureBuilder<Uint8List>(
+            future: future,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.broken_image_outlined),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text('Bild konnte nicht geladen werden: ${snapshot.error}'),
+                    ),
+                    IconButton(
+                      tooltip: 'Erneut laden',
+                      onPressed: () {
+                        _attachmentBytes.remove(attachment.name);
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ],
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return Image.memory(
+                snapshot.data!,
+                fit: BoxFit.contain,
+                errorBuilder: (_, error, _) => const Center(
+                  child: Icon(Icons.broken_image_outlined),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pendingImagePreview(PendingAttachment attachment) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    child: SizedBox(
+      width: double.infinity,
+      height: 240,
+      child: Image.file(
+        File(attachment.path),
+        fit: BoxFit.contain,
+        errorBuilder: (_, error, _) => const Center(
+          child: Icon(Icons.broken_image_outlined),
+        ),
+      ),
+    ),
+  );
+
+  Widget _attachmentTile(NoteAttachment attachment) => ListTile(
+    leading: Icon(
+      attachment.type.startsWith('image/')
+          ? Icons.image_outlined
+          : attachment.type.startsWith('audio/')
+          ? Icons.audiotrack
+          : Icons.insert_drive_file_outlined,
+    ),
+    title: Text(attachment.filename),
+    subtitle: Text('${attachment.type} · ${_formatSize(attachment.size)}'),
+    trailing: PopupMenuButton<String>(
+      enabled: !widget.note.busy,
+      tooltip: 'Anhangoptionen',
+      onSelected: (action) {
+        if (action == 'open') _openAttachment(attachment);
+        if (action == 'remove') _removeAttachment(attachment);
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'open', child: Text('Mit App öffnen')),
+        PopupMenuItem(value: 'remove', child: Text('Aus Notiz entfernen')),
+      ],
+    ),
+    onTap: widget.note.busy ? null : () => _openAttachment(attachment),
+  );
 
   Widget _attachments() {
     final note = widget.note;
@@ -606,38 +764,41 @@ class _NoteScreenState extends State<NoteScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final attachment in note.attachments)
-          ListTile(
-            leading: Icon(
-              attachment.type.startsWith('image/')
-                  ? Icons.image_outlined
-                  : attachment.type.startsWith('audio/')
-                  ? Icons.audiotrack
-                  : Icons.insert_drive_file_outlined,
-            ),
-            title: Text(attachment.filename),
-            subtitle: Text(
-              '${attachment.type} · ${_formatSize(attachment.size)}',
-            ),
-            trailing: PopupMenuButton<String>(
-              tooltip: 'Anhang öffnen',
-              onSelected: (_) => _openAttachment(attachment),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'open', child: Text('In der App öffnen')),
-              ],
-            ),
-            onTap: () => _openAttachment(attachment),
-          ),
+          if (attachment.type.startsWith('image/')) ...[
+            _imageAttachmentPreview(attachment),
+            _attachmentTile(attachment),
+          ] else
+            _attachmentTile(attachment),
         for (final pending in note.pendingAttachments)
-          ListTile(
-            leading: const Icon(Icons.cloud_upload_outlined),
-            title: Text(pending.filename),
-            subtitle: Text(
-              pending.uploadedName == null
-                  ? 'Wird synchronisiert'
-                  : 'Hochgeladen, Verknüpfung ausstehend',
+          ...[
+            if (pending.type.startsWith('image/'))
+              _pendingImagePreview(pending),
+            ListTile(
+              leading: const Icon(Icons.cloud_upload_outlined),
+              title: Text(pending.filename),
+              subtitle: Text(
+                pending.uploadedName == null
+                    ? 'Wird synchronisiert'
+                    : 'Hochgeladen, Verknüpfung ausstehend',
+              ),
+              trailing: PopupMenuButton<String>(
+                enabled: !note.busy,
+                tooltip: 'Anhangoptionen',
+                onSelected: (action) {
+                  if (action == 'open') _openPendingAttachment(pending);
+                  if (action == 'remove') _removePendingAttachment(pending);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'open', child: Text('Mit App öffnen')),
+                  PopupMenuItem(
+                    value: 'remove',
+                    child: Text('Aus Notiz entfernen'),
+                  ),
+                ],
+              ),
+              onTap: note.busy ? null : () => _openPendingAttachment(pending),
             ),
-            trailing: const Icon(Icons.more_vert),
-          ),
+          ],
         if (note.location case final location?)
           ListTile(
             leading: const Icon(Icons.location_on_outlined),
@@ -707,7 +868,7 @@ class _NoteScreenState extends State<NoteScreen> {
     _schedule();
   }
 
-  Widget _toolbar() {
+  Widget _toolbar(bool assistedEditingEnabled) {
     Widget b(IconData i, String tip, VoidCallback f) =>
         IconButton(icon: Icon(i), tooltip: tip, onPressed: f);
     Widget h(String label, String tip, VoidCallback f, {bool bold = true}) =>
@@ -744,9 +905,20 @@ class _NoteScreenState extends State<NoteScreen> {
           h('Abc', 'Normaler Text', () => _setHeading(0), bold: false),
           b(Icons.format_bold, 'Fett', () => _wrap('**', '**')),
           b(Icons.format_italic, 'Kursiv', () => _wrap('*', '*')),
-          b(Icons.format_list_bulleted, 'Aufzählung', () => _linePrefix('- ')),
-          b(Icons.format_list_numbered, 'Nummeriert', () => _linePrefix('1. ')),
-          b(Icons.check_box_outlined, 'Aufgabe', () => _linePrefix('- [ ] ')),
+          if (assistedEditingEnabled)
+            b(Icons.format_list_bulleted, 'Aufzählung', () => _linePrefix('- ')),
+          if (assistedEditingEnabled)
+            b(
+              Icons.format_list_numbered,
+              'Nummeriert',
+              () => _linePrefix('1. '),
+            ),
+          if (assistedEditingEnabled)
+            b(
+              Icons.check_box_outlined,
+              'Aufgabe',
+              () => _linePrefix('- [ ] '),
+            ),
           b(Icons.link, 'Link', () => _wrap('[', '](https://)')),
           b(Icons.code, 'Code', () => _wrap('`', '`')),
           b(Icons.format_quote, 'Zitat', () => _linePrefix('> ')),
@@ -760,7 +932,6 @@ class _NoteScreenState extends State<NoteScreen> {
       return ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
-          _attachments(),
           for (final seg in segs)
             if (seg is TextSeg)
               (seg.text.trim().isEmpty
@@ -778,13 +949,17 @@ class _NoteScreenState extends State<NoteScreen> {
                 seg: seg as TaskSeg,
                 edit: edit,
                 onChanged: _changed,
+                onOpenLink: _openLink,
+                assistedEditingEnabled: s.assistedEditingEnabled,
+                blockMarkdownImages: blockMarkdownImages,
               ),
+          _attachments(),
         ],
       );
     }
     return Column(
       children: [
-        _toolbar(),
+        _toolbar(s.assistedEditingEnabled),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(12),

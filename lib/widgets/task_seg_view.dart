@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../models/task_doc.dart';
+import 'markdown_image_blocker.dart';
 
 /// Gemeinsamer Zustand für das Bearbeiten von Listeneinträgen innerhalb einer Notiz.
 class TaskEditCtx {
@@ -24,11 +26,17 @@ class TaskSegView extends StatefulWidget {
   final TaskSeg seg;
   final TaskEditCtx edit;
   final VoidCallback onChanged;
+  final ValueChanged<String?> onOpenLink;
+  final bool assistedEditingEnabled;
+  final bool blockMarkdownImages;
   const TaskSegView({
     super.key,
     required this.seg,
     required this.edit,
     required this.onChanged,
+    required this.onOpenLink,
+    required this.assistedEditingEnabled,
+    required this.blockMarkdownImages,
   });
 
   @override
@@ -101,14 +109,18 @@ class _TaskSegViewState extends State<TaskSegView> {
               : false,
           onChanged: (_) => _toggle(t),
         ),
-        title: Text(
-          t.text,
-          style: t.done
-              ? TextStyle(
-                  decoration: TextDecoration.lineThrough,
-                  color: Theme.of(context).disabledColor,
-                )
+        title: MarkdownBody(
+          data: t.text,
+          onTapLink: (text, href, title) => widget.onOpenLink(href),
+          imageBuilder: widget.blockMarkdownImages
+              ? blockedMarkdownImage
               : null,
+          styleSheet: MarkdownStyleSheet(
+            p: TextStyle(
+              decoration: t.done ? TextDecoration.lineThrough : null,
+              color: t.done ? Theme.of(context).disabledColor : null,
+            ),
+          ),
         ),
       ),
     for (final c in t.children) ..._doneRows(c, depth + 1),
@@ -124,8 +136,12 @@ class _TaskSegViewState extends State<TaskSegView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Level(tasks: widget.seg.roots, host: this),
-        if (done.isNotEmpty)
+        _Level(
+          tasks: widget.seg.roots,
+          host: this,
+          assistedEditingEnabled: widget.assistedEditingEnabled,
+        ),
+        if (widget.assistedEditingEnabled && done.isNotEmpty)
           ExpansionTile(
             key: ObjectKey(widget.seg),
             title: Text('Erledigt ($doneCount)'),
@@ -139,35 +155,53 @@ class _TaskSegViewState extends State<TaskSegView> {
 class _Level extends StatelessWidget {
   final List<Task> tasks;
   final _TaskSegViewState host;
-  const _Level({required this.tasks, required this.host});
+  final bool assistedEditingEnabled;
+  const _Level({
+    required this.tasks,
+    required this.host,
+    required this.assistedEditingEnabled,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final vis = tasks.where((t) => !t.done).toList();
+    final visible = assistedEditingEnabled
+        ? tasks.where((t) => !t.done).toList()
+        : tasks;
+    Widget item(int index) {
+      final task = visible[index];
+      return Column(
+        key: ObjectKey(task),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TaskRow(task: task, siblings: tasks, index: index, host: host),
+          if (task.children.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 32),
+              child: _Level(
+                tasks: task.children,
+                host: host,
+                assistedEditingEnabled: assistedEditingEnabled,
+              ),
+            ),
+        ],
+      );
+    }
+
+    if (!assistedEditingEnabled) {
+      return Column(
+        children: [for (var i = 0; i < visible.length; i++) item(i)],
+      );
+    }
     return ReorderableListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: false,
-      itemCount: vis.length,
-      onReorder: (o, n) {
-        reorderVisible(tasks, (t) => !t.done, o, n);
+      itemCount: visible.length,
+      onReorderItem: (oldIndex, newIndex) {
+        reorderVisible(tasks, (task) => !task.done, oldIndex, newIndex);
         host._changed();
       },
-      itemBuilder: (ctx, i) {
-        final t = vis[i];
-        return Column(
-          key: ObjectKey(t),
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _TaskRow(task: t, siblings: tasks, index: i, host: host),
-            if (t.children.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(left: 32),
-                child: _Level(tasks: t.children, host: host),
-              ),
-          ],
-        );
-      },
+      itemBuilder: (context, index) => item(index),
     );
   }
 }
@@ -194,20 +228,33 @@ class _TaskRowState extends State<_TaskRow> {
     text: widget.task.text,
   );
   final FocusNode _f = FocusNode();
+  late bool _editing;
 
   @override
   void initState() {
     super.initState();
+    _editing =
+        widget.host.widget.assistedEditingEnabled &&
+        widget.host.edit.fresh == widget.task;
     _f.addListener(_onFocus);
-    if (widget.host.edit.fresh == widget.task) {
+    if (_editing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _f.requestFocus();
       });
     }
   }
 
+  @override
+  void didUpdateWidget(covariant _TaskRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.host.widget.assistedEditingEnabled && _editing) {
+      _editing = false;
+      if (_f.hasFocus) widget.host._commit(widget.task);
+    }
+  }
+
   void _onFocus() {
-    if (_f.hasFocus) return;
+    if (_f.hasFocus || !_editing) return;
     final host = widget.host;
     final t = widget.task;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -228,7 +275,8 @@ class _TaskRowState extends State<_TaskRow> {
     final t = widget.task;
     final host = widget.host;
     final anyDone = t.children.any((c) => c.done);
-    final matches = host.edit.fresh == t
+    final canEdit = host.widget.assistedEditingEnabled;
+    final matches = canEdit && host.edit.fresh == t
         ? findTasks(host.edit.segments(), t.text, exclude: t).take(4).toList()
         : const <Task>[];
 
@@ -237,13 +285,14 @@ class _TaskRowState extends State<_TaskRow> {
       children: [
         Row(
           children: [
-            ReorderableDragStartListener(
-              index: widget.index,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6),
-                child: Icon(Icons.drag_indicator),
+            if (canEdit)
+              ReorderableDragStartListener(
+                index: widget.index,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: Icon(Icons.drag_indicator),
+                ),
               ),
-            ),
             if (host.widget.seg.type == TaskListType.task)
               Checkbox(
                 tristate: true,
@@ -266,53 +315,74 @@ class _TaskRowState extends State<_TaskRow> {
                 ),
               ),
             Expanded(
-              child: TextField(
-                controller: _c,
-                focusNode: _f,
-                maxLines: null,
-                keyboardType: TextInputType.text,
-                textInputAction: TextInputAction.done,
-                inputFormatters: [FilteringTextInputFormatter.deny('\n')],
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  hintText: 'Neuer Eintrag',
-                  contentPadding: EdgeInsets.symmetric(vertical: 10),
-                ),
-                onChanged: (v) {
-                  t.text = v;
-                  host._typed();
-                },
-                onSubmitted: (_) => _f.unfocus(),
-                onTapOutside: (_) => _f.unfocus(),
+              child: _editing
+                  ? TextField(
+                      controller: _c,
+                      focusNode: _f,
+                      maxLines: null,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.done,
+                      inputFormatters: [FilteringTextInputFormatter.deny('\n')],
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        hintText: 'Neuer Eintrag',
+                        contentPadding: EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onChanged: (value) {
+                        t.text = value;
+                        host._typed();
+                      },
+                      onSubmitted: (_) => _f.unfocus(),
+                      onTapOutside: (_) => _f.unfocus(),
+                    )
+                  : GestureDetector(
+                      onTap: canEdit
+                          ? () => setState(() {
+                              _editing = true;
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) _f.requestFocus();
+                              });
+                            })
+                          : null,
+                      child: MarkdownBody(
+                        data: t.text.isEmpty ? ' ' : t.text,
+                        onTapLink: (text, href, title) =>
+                            host.widget.onOpenLink(href),
+                        imageBuilder: host.widget.blockMarkdownImages
+                            ? blockedMarkdownImage
+                            : null,
+                      ),
+                    ),
+            ),
+            if (canEdit) ...[
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'Aufgabe auf dieser Ebene hinzufügen',
+                onPressed: () => host._addSibling(widget.siblings, t),
               ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.add),
-              tooltip: 'Aufgabe auf dieser Ebene hinzufügen',
-              onPressed: () => host._addSibling(widget.siblings, t),
-            ),
-            PopupMenuButton<String>(
-              onSelected: (v) {
-                if (v == 'c') host._addChild(t);
-                if (v == 'd') host._delete(t);
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'c',
-                  child: Text('Unteraufgabe hinzufügen'),
-                ),
-                PopupMenuItem(
-                  value: 'd',
-                  child: Text(
-                    'Löschen',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'c') host._addChild(t);
+                  if (value == 'd') host._delete(t);
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'c',
+                    child: Text('Unteraufgabe hinzufügen'),
+                  ),
+                  PopupMenuItem(
+                    value: 'd',
+                    child: Text(
+                      'Löschen',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ),
         if (matches.isNotEmpty)

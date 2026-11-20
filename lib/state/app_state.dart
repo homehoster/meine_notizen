@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -39,6 +41,7 @@ class AppState extends ChangeNotifier {
   String serverVersion = '';
   ThemeMode themeMode = ThemeMode.system;
   bool blockMarkdownImages = true;
+  bool assistedEditingEnabled = true;
   List<Note> notes = [];
   List<MemoSpace> spaces = [];
   List<SavedView> savedViews = [];
@@ -140,6 +143,8 @@ class AppState extends ChangeNotifier {
     baseUrl = preferences.getString('url') ?? '';
     themeMode = ThemeMode.values[preferences.getInt('theme') ?? 0];
     blockMarkdownImages = preferences.getBool('blockMarkdownImages') ?? true;
+    assistedEditingEnabled =
+        preferences.getBool('assistedEditingEnabled') ?? true;
     logEnabled = preferences.getBool('log') ?? false;
     LogService.setEnabled(logEnabled);
     token = await _secure.read(key: 'token') ?? '';
@@ -203,6 +208,13 @@ class AppState extends ChangeNotifier {
     blockMarkdownImages = value;
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool('blockMarkdownImages', value);
+    notifyListeners();
+  }
+
+  Future<void> setAssistedEditingEnabled(bool value) async {
+    assistedEditingEnabled = value;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('assistedEditingEnabled', value);
     notifyListeners();
   }
 
@@ -442,6 +454,35 @@ class AppState extends ChangeNotifier {
     _schedulePush(note);
   }
 
+  Future<void> removeAttachment(Note note, NoteAttachment attachment) async {
+    if (!note.attachments.remove(attachment)) return;
+    note.dirty = true;
+    note.dirtyFields.add('attachments');
+    await _persist();
+    notifyListeners();
+    _schedulePush(note);
+  }
+
+  Future<void> removePendingAttachment(
+    Note note,
+    PendingAttachment attachment,
+  ) async {
+    if (!note.pendingAttachments.contains(attachment)) return;
+    final file = File(attachment.path);
+    if (await file.exists()) await file.delete();
+
+    note.pendingAttachments.remove(attachment);
+    if (attachment.uploadedName case final name?) {
+      note.attachments.removeWhere((item) => item.name == name);
+      note.dirtyFields.add('attachments');
+    }
+    note.dirty =
+        note.dirtyFields.isNotEmpty || note.pendingAttachments.isNotEmpty;
+    await _persist();
+    notifyListeners();
+    _schedulePush(note);
+  }
+
   Future<Directory> _pendingDirectory() async {
     final root = await getApplicationDocumentsDirectory();
     final directory = Directory(p.join(root.path, 'pending_attachments'));
@@ -537,14 +578,27 @@ class AppState extends ChangeNotifier {
           .where((note) => widgetIds.contains(note.id))
           .toList();
       final values = selected.isEmpty ? ordered : selected;
-      final items = [
-        for (final note in values)
-          {
-            'id': note.id,
-            'title': note.title,
-            'preview': widgetPreview(note.content),
-          },
-      ];
+      final items = <Map<String, dynamic>>[];
+      for (final note in values) {
+        final attachments = <Map<String, String>>[
+          for (final attachment in note.attachments)
+            {'filename': attachment.filename, 'type': attachment.type},
+          for (final attachment in note.pendingAttachments)
+            {'filename': attachment.filename, 'type': attachment.type},
+        ];
+        final attachmentSummary = attachments.isEmpty
+            ? ''
+            : 'Anhang: ${attachments.take(2).map((a) => a['filename']).join(', ')}'
+                  '${attachments.length > 2 ? ', +${attachments.length - 2}' : ''}';
+        final imagePath = await _widgetImagePath(note);
+        items.add({
+          'id': note.id,
+          'title': note.title,
+          'preview': widgetPreview(note.content),
+          'attachmentSummary': attachmentSummary,
+          'imagePath': imagePath ?? '',
+        });
+      }
       await HomeWidget.saveWidgetData<String>(
         'widget_notes',
         jsonEncode(items),
@@ -555,6 +609,93 @@ class AppState extends ChangeNotifier {
       );
     } catch (e) {
       LogService.log('Widget konnte nicht aktualisiert werden: $e');
+    }
+  }
+
+  Future<String?> _widgetImagePath(Note note) async {
+    final attachment = note.attachments.where(
+      (item) => item.type.startsWith('image/'),
+    );
+    final pending = note.pendingAttachments.where(
+      (item) => item.type.startsWith('image/'),
+    );
+    final serverImage = attachment.isEmpty ? null : attachment.first;
+    final pendingImage = pending.isEmpty ? null : pending.first;
+    final id = note.id.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final pathKey = 'note_${id}_image';
+    final sourceKey = 'note_${id}_image_source';
+    final cachedSource = await HomeWidget.getWidgetData<String>(sourceKey);
+    final cachedPath = await HomeWidget.getWidgetData<String>(pathKey);
+
+    if (serverImage == null && pendingImage == null) {
+      if (cachedPath != null) {
+        await HomeWidget.saveWidgetData<String>(pathKey, null);
+      }
+      if (cachedSource != null) {
+        await HomeWidget.saveWidgetData<String>(
+          sourceKey,
+          null,
+          deleteFile: false,
+        );
+      }
+      return null;
+    }
+
+    final source = serverImage?.name ?? pendingImage!.path;
+    if (cachedSource == source &&
+        cachedPath != null &&
+        await File(cachedPath).exists()) {
+      return cachedPath;
+    }
+
+    try {
+      final Uint8List bytes = serverImage != null
+          ? Uint8List.fromList(await fetchAttachment(serverImage.name))
+          : await File(pendingImage!.path).readAsBytes();
+      final thumbnail = await _createWidgetThumbnail(bytes);
+      final path = await HomeWidget.saveFile(
+        pathKey,
+        thumbnail,
+        extension: 'png',
+      );
+      await HomeWidget.saveWidgetData<String>(
+        sourceKey,
+        source,
+        deleteFile: false,
+      );
+      return path;
+    } catch (e) {
+      LogService.log(
+        'Widget-Bild konnte nicht geladen werden (${note.id}): $e',
+      );
+      return null;
+    }
+  }
+
+  Future<Uint8List> _createWidgetThumbnail(Uint8List bytes) async {
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: 192,
+      targetHeight: 128,
+      allowUpscaling: false,
+    );
+    try {
+      final frame = await codec.getNextFrame();
+      try {
+        final data = await frame.image.toByteData(
+          format: ui.ImageByteFormat.png,
+        );
+        if (data == null) {
+          throw const FormatException(
+            'Widget-Bild konnte nicht kodiert werden.',
+          );
+        }
+        return data.buffer.asUint8List();
+      } finally {
+        frame.image.dispose();
+      }
+    } finally {
+      codec.dispose();
     }
   }
 
@@ -656,7 +797,8 @@ class AppState extends ChangeNotifier {
           }
         }
 
-        if (note.pendingAttachments.isNotEmpty) {
+        if (note.pendingAttachments.isNotEmpty ||
+            note.dirtyFields.contains('attachments')) {
           final uploading = List<PendingAttachment>.of(note.pendingAttachments);
           for (final pending in uploading) {
             if (pending.uploadedName == null) {
@@ -666,13 +808,22 @@ class AppState extends ChangeNotifier {
               await _persist();
             }
           }
-          await _api.setMemoAttachments(note.id, note.attachments);
+          final attachmentsToSave = List<NoteAttachment>.of(note.attachments);
+          await _api.setMemoAttachments(note.id, attachmentsToSave);
           for (final pending in uploading) {
             final file = File(pending.path);
             if (await file.exists()) await file.delete();
             note.pendingAttachments.remove(pending);
           }
-          if (note.pendingAttachments.isEmpty) {
+          final attachmentsUnchanged =
+              note.attachments.length == attachmentsToSave.length &&
+              List.generate(
+                attachmentsToSave.length,
+                (index) =>
+                    note.attachments[index].name ==
+                    attachmentsToSave[index].name,
+              ).every((same) => same);
+          if (attachmentsUnchanged && note.pendingAttachments.isEmpty) {
             note.dirtyFields.remove('attachments');
           } else {
             changedMeanwhile = true;

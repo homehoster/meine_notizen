@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
@@ -909,6 +912,37 @@ class _NotePreview extends StatelessWidget {
               depth: 0,
             ),
         if (rest.length > 5) Text('…', style: theme.textTheme.bodyMedium),
+        if (note.attachments.isNotEmpty || note.pendingAttachments.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final attachment in note.attachments.take(3))
+                  _HomeAttachmentPreview(
+                    key: ValueKey(attachment.name),
+                    attachment: attachment,
+                  ),
+                for (final attachment in note.pendingAttachments.take(
+                  note.attachments.length >= 3
+                      ? 0
+                      : 3 - note.attachments.length,
+                ))
+                  _HomeAttachmentPreview(
+                    key: ValueKey(attachment.path),
+                    pending: attachment,
+                  ),
+                if (note.attachments.length + note.pendingAttachments.length >
+                    3)
+                  Chip(
+                    label: Text(
+                      '+ ${note.attachments.length + note.pendingAttachments.length - 3}',
+                    ),
+                  ),
+              ],
+            ),
+          ),
         if (heading == null && shown.isEmpty)
           Text(
             'Leere Notiz',
@@ -917,6 +951,94 @@ class _NotePreview extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _HomeAttachmentPreview extends StatefulWidget {
+  final NoteAttachment? attachment;
+  final PendingAttachment? pending;
+
+  const _HomeAttachmentPreview({super.key, this.attachment, this.pending});
+
+  @override
+  State<_HomeAttachmentPreview> createState() => _HomeAttachmentPreviewState();
+}
+
+class _HomeAttachmentPreviewState extends State<_HomeAttachmentPreview> {
+  Future<Uint8List>? _imageBytes;
+
+  String get _filename =>
+      widget.attachment?.filename ?? widget.pending!.filename;
+  String get _type => widget.attachment?.type ?? widget.pending!.type;
+  bool get _isImage => _type.startsWith('image/');
+
+  @override
+  void initState() {
+    super.initState();
+    final attachment = widget.attachment;
+    if (attachment != null && attachment.type.startsWith('image/')) {
+      _imageBytes = _loadImage(attachment);
+    }
+  }
+
+  Future<Uint8List> _loadImage(NoteAttachment attachment) async {
+    final bytes = await context.read<AppState>().fetchAttachment(
+      attachment.name,
+    );
+    return Uint8List.fromList(bytes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isImage) {
+      return SizedBox(
+        width: 220,
+        child: Chip(
+          avatar: Icon(
+            _type.startsWith('audio/')
+                ? Icons.audiotrack
+                : Icons.insert_drive_file_outlined,
+            size: 18,
+          ),
+          label: Text(_filename, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      );
+    }
+
+    final pending = widget.pending;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 160,
+        height: 100,
+        child: pending != null
+            ? Image.file(
+                File(pending.path),
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    const Icon(Icons.broken_image_outlined, size: 32),
+              )
+            : FutureBuilder<Uint8List>(
+                future: _imageBytes,
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Icon(Icons.broken_image_outlined, size: 32);
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  }
+                  return Image.memory(
+                    snapshot.data!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        const Icon(Icons.broken_image_outlined, size: 32),
+                  );
+                },
+              ),
+      ),
     );
   }
 }
