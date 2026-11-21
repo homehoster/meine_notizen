@@ -1119,21 +1119,21 @@ class _NoteScreenState extends State<NoteScreen> {
             },
             itemBuilder: (_) => [
               PopupMenuItem(
-                value: 'PRIVATE',
-                child: _menuLabel(
-                  Icons.lock_outline,
-                  'Privat',
-                  style: widget.note.visibility == 'PRIVATE'
-                      ? const TextStyle(fontWeight: FontWeight.bold)
-                      : null,
-                ),
-              ),
-              PopupMenuItem(
                 value: 'PUBLIC',
                 child: _menuLabel(
                   Icons.public_outlined,
                   'Öffentlich',
                   style: widget.note.visibility == 'PUBLIC'
+                      ? const TextStyle(fontWeight: FontWeight.bold)
+                      : null,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'PRIVATE',
+                child: _menuLabel(
+                  Icons.lock_outline,
+                  'Privat',
+                  style: widget.note.visibility == 'PRIVATE'
                       ? const TextStyle(fontWeight: FontWeight.bold)
                       : null,
                 ),
@@ -1160,6 +1160,18 @@ class _NoteScreenState extends State<NoteScreen> {
                   ),
                 ),
             ],
+          ),
+          IconButton(
+            icon: Icon(
+              s.widgetIds.contains(widget.note.id)
+                  ? Icons.widgets
+                  : Icons.widgets_outlined,
+            ),
+            tooltip: 'Im Widget anzeigen',
+            onPressed: () async {
+              await s.toggleWidget(widget.note);
+              setState(() {});
+            },
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
@@ -1204,28 +1216,6 @@ class _NoteScreenState extends State<NoteScreen> {
                   ),
                 ),
             ],
-          ),
-          IconButton(
-            icon: Icon(
-              s.widgetIds.contains(widget.note.id)
-                  ? Icons.widgets
-                  : Icons.widgets_outlined,
-            ),
-            tooltip: 'Im Widget anzeigen',
-            onPressed: () async {
-              await s.toggleWidget(widget.note);
-              setState(() {});
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: 'Notiz löschen',
-            onPressed: () async {
-              final nav = Navigator.of(context);
-              _t?.cancel();
-              await s.deleteNote(widget.note);
-              nav.pop();
-            },
           ),
         ],
       ),
