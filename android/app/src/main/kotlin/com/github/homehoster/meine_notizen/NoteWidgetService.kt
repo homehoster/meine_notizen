@@ -88,7 +88,8 @@ private class NoteWidgetFactory(private val context: Context) : RemoteViewsServi
 
     override fun getViewTypeCount(): Int = 1
 
-    override fun getItemId(position: Int): Long = notes[position].id.hashCode().toLong()
+    override fun getItemId(position: Int): Long =
+        notes.getOrNull(position)?.id?.hashCode()?.toLong() ?: position.toLong()
 
     override fun hasStableIds(): Boolean = true
 }

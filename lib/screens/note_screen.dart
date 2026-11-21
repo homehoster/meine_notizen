@@ -592,9 +592,9 @@ class _NoteScreenState extends State<NoteScreen> {
     try {
       final bytes = attachment.type.startsWith('image/')
           ? await _attachmentBytes.putIfAbsent(attachment.name, () async {
-              return Uint8List.fromList(await s.fetchAttachment(attachment.name));
+              return await s.attachmentBytes(attachment.name);
             })
-          : Uint8List.fromList(await s.fetchAttachment(attachment.name));
+          : await s.attachmentBytes(attachment.name);
       final directory = await getTemporaryDirectory();
       final filename = p
           .basename(attachment.filename)
@@ -791,7 +791,7 @@ class _NoteScreenState extends State<NoteScreen> {
 
   Widget _imageAttachmentPreview(NoteAttachment attachment) {
     final future = _attachmentBytes.putIfAbsent(attachment.name, () async {
-      return Uint8List.fromList(await s.fetchAttachment(attachment.name));
+      return await s.attachmentBytes(attachment.name);
     });
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -828,6 +828,7 @@ class _NoteScreenState extends State<NoteScreen> {
               }
               return Image.memory(
                 snapshot.data!,
+                cacheWidth: 1200,
                 fit: BoxFit.contain,
                 errorBuilder: (_, error, _) => const Center(
                   child: Icon(Icons.broken_image_outlined),
@@ -847,6 +848,7 @@ class _NoteScreenState extends State<NoteScreen> {
       height: 240,
       child: Image.file(
         File(attachment.path),
+        cacheWidth: 1200,
         fit: BoxFit.contain,
         errorBuilder: (_, error, _) => const Center(
           child: Icon(Icons.broken_image_outlined),

@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:http/http.dart' show ClientException;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +17,7 @@ import '../models/saved_view.dart';
 import '../models/space.dart';
 import '../models/task_doc.dart';
 import '../services/api.dart';
+import '../services/attachment_cache.dart';
 import '../services/log.dart';
 import '../services/store.dart';
 
@@ -31,10 +33,22 @@ class NavigationTarget {
 class AppState extends ChangeNotifier {
   static const _pushDelay = Duration(seconds: 4);
   static const _maxAttachmentBytes = 100 * 1024 * 1024;
+  static const _maxWidgetNotes = 30;
+  static const _fullSyncInterval = Duration(hours: 6);
 
   final _store = LocalStore();
   final _secure = const FlutterSecureStorage();
   final Map<Note, Timer> _pushTimers = {};
+  final Map<Note, int> _pushFailures = {};
+  late final AttachmentCache attachmentCache = AttachmentCache(fetchAttachment);
+  bool _networkFailed = false;
+  DateTime? _lastSyncStart;
+  DateTime? _lastFullSync;
+  int _revision = 0;
+  int _visibleRevision = -1;
+  List<Note> _visibleCache = const [];
+  int _selectedRevision = -1;
+  List<Note> _selectedCache = const [];
 
   String baseUrl = '';
   String token = '';
@@ -48,6 +62,7 @@ class AppState extends ChangeNotifier {
   Set<String> widgetIds = {};
   bool? spacesSupported;
   bool syncing = false;
+  bool authFailed = false;
   String? error;
   String? notice;
   bool logEnabled = false;
@@ -56,13 +71,44 @@ class AppState extends ChangeNotifier {
   Future<void> Function()? onBeforeBackground;
 
   bool get configured => baseUrl.isNotEmpty && token.isNotEmpty;
-  MemosApi get _api => MemosApi(baseUrl, token);
+  MemosApi? _apiCache;
+  String _apiKey = '';
+  MemosApi get _api {
+    final key = '$baseUrl\n$token';
+    if (_apiCache == null || _apiKey != key) {
+      _apiCache = MemosApi(baseUrl, token);
+      _apiKey = key;
+    }
+    return _apiCache!;
+  }
 
-  List<Note> get visible => _sorted(
-    notes.where((note) => !note.deleted && note.state == NoteState.normal),
-  );
+  @override
+  void notifyListeners() {
+    _revision++; // macht die gecachten Sortierungen ungültig
+    super.notifyListeners();
+  }
+
+  List<Note> get visible {
+    if (_visibleRevision != _revision) {
+      _visibleCache = _sorted(
+        notes.where(
+          (note) => !note.deleted && note.state == NoteState.normal,
+        ),
+      );
+      _visibleRevision = _revision;
+    }
+    return _visibleCache;
+  }
 
   List<Note> get selectedNotes {
+    if (_selectedRevision != _revision) {
+      _selectedCache = _computeSelected();
+      _selectedRevision = _revision;
+    }
+    return _selectedCache;
+  }
+
+  List<Note> _computeSelected() {
     final target = navigation;
     return _sorted(
       notes.where((note) {
@@ -175,6 +221,9 @@ class AppState extends ChangeNotifier {
     final preferences = await SharedPreferences.getInstance();
     baseUrl = url.trim();
     token = tok.trim();
+    authFailed = false;
+    _lastFullSync = null;
+    _lastSyncStart = null;
     spacesSupported = null;
     spaces = [];
     await preferences.setString('url', baseUrl);
@@ -189,6 +238,10 @@ class AppState extends ChangeNotifier {
     baseUrl = '';
     token = '';
     error = null;
+    authFailed = false;
+    _lastFullSync = null;
+    _lastSyncStart = null;
+    unawaited(attachmentCache.clear());
     spacesSupported = null;
     spaces = [];
     await preferences.remove('url');
@@ -648,7 +701,9 @@ class AppState extends ChangeNotifier {
       final selected = ordered
           .where((note) => widgetIds.contains(note.id))
           .toList();
-      final values = selected.isEmpty ? ordered : selected;
+      final values = (selected.isEmpty ? ordered : selected)
+          .take(_maxWidgetNotes)
+          .toList();
       final items = <Map<String, dynamic>>[];
       for (final note in values) {
         final imagePath = await _widgetImagePath(note);
@@ -710,7 +765,7 @@ class AppState extends ChangeNotifier {
 
     try {
       final Uint8List bytes = serverImage != null
-          ? Uint8List.fromList(await fetchAttachment(serverImage.name))
+          ? await attachmentBytes(serverImage.name)
           : await File(pendingImage!.path).readAsBytes();
       final thumbnail = await _createWidgetThumbnail(bytes);
       final path = await HomeWidget.saveFile(
@@ -759,10 +814,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Wartezeit bis zum nächsten Versand: normal 4 s, nach Netzwerkfehlern
+  /// verdoppelt sie sich (8, 16, 32 … s) bis höchstens 5 Minuten.
+  Duration _pushDelayFor(Note note) {
+    final failures = _pushFailures[note] ?? 0;
+    if (failures == 0) return _pushDelay;
+    final exponent = failures > 6 ? 6 : failures;
+    final seconds = 4 * (1 << exponent);
+    return Duration(seconds: seconds > 300 ? 300 : seconds);
+  }
+
   void _schedulePush(Note note) {
     if (!configured) return;
     _pushTimers[note]?.cancel();
-    _pushTimers[note] = Timer(_pushDelay, () {
+    _pushTimers[note] = Timer(_pushDelayFor(note), () {
       _pushTimers.remove(note);
       unawaited(_push(note));
     });
@@ -778,8 +843,10 @@ class AppState extends ChangeNotifier {
       timer.cancel();
     }
     _pushTimers.clear();
+    _networkFailed = false;
     for (final note in List.of(notes)) {
       if (note.dirty || note.deleted) await _push(note);
+      if (_networkFailed || authFailed) break;
     }
   }
 
@@ -804,6 +871,7 @@ class AppState extends ChangeNotifier {
     }
     note.busy = true;
     var changedMeanwhile = false;
+    var retryLater = false;
     final dirtyFieldsAtStart = Set<String>.of(note.dirtyFields);
     try {
       if (note.deleted) {
@@ -927,15 +995,25 @@ class AppState extends ChangeNotifier {
             note.dirtyFields.isNotEmpty || note.pendingAttachments.isNotEmpty;
       }
       error = null;
+      _pushFailures.remove(note);
       await _persist();
     } catch (e) {
       error = '$e';
+      if (e is MemosApiException && e.statusCode == 401) {
+        authFailed = true;
+      } else if (_isNetworkError(e)) {
+        _networkFailed = true;
+        retryLater = true;
+        _pushFailures[note] = (_pushFailures[note] ?? 0) + 1;
+      }
       LogService.log('Push fehlgeschlagen (${note.id}): $e');
     } finally {
       note.busy = false;
       notifyListeners();
     }
-    if (changedMeanwhile && notes.contains(note)) _schedulePush(note);
+    if ((changedMeanwhile || retryLater) && notes.contains(note)) {
+      _schedulePush(note);
+    }
   }
 
   Future<void> _refreshSpacesAndVersion(MemosApi api) async {
@@ -944,6 +1022,7 @@ class AppState extends ChangeNotifier {
       serverVersion = profile['version'] as String? ?? '';
     } catch (e) {
       LogService.log('Instanzprofil konnte nicht gelesen werden: $e');
+      if (_isNetworkError(e)) rethrow;
     }
     try {
       spaces = await api.listSpaces();
@@ -961,20 +1040,46 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> sync() async {
+  Future<void> sync({bool full = false}) async {
     if (!configured || syncing) return;
     syncing = true;
     error = null;
+    authFailed = false;
+    _networkFailed = false;
     notifyListeners();
     LogService.log('Sync gestartet ($baseUrl)');
     try {
+      final startedAt = DateTime.now().toUtc();
       final api = _api;
       await _refreshSpacesAndVersion(api);
       for (final note in List.of(notes)) {
         if (note.dirty || note.deleted) await _push(note);
+        // Server nicht erreichbar oder Token ungültig: nicht jede weitere
+        // Notiz noch einmal bis zum Timeout versuchen.
+        if (_networkFailed || authFailed) break;
       }
-      final normal = await api.list();
-      final archived = await api.list(state: 'ARCHIVED');
+      if (_networkFailed || authFailed) return;
+
+      var incremental =
+          !full &&
+          _lastSyncStart != null &&
+          _lastFullSync != null &&
+          startedAt.difference(_lastFullSync!) < _fullSyncInterval;
+      List<Note> normal;
+      List<Note> archived;
+      try {
+        final since = incremental
+            ? _lastSyncStart!.subtract(const Duration(minutes: 5))
+            : null;
+        normal = await api.list(updatedSince: since);
+        archived = await api.list(state: 'ARCHIVED', updatedSince: since);
+      } on MemosApiException catch (e) {
+        if (!incremental || e.statusCode == 401) rethrow;
+        LogService.log('Inkrementeller Sync nicht möglich ($e), lade alles');
+        incremental = false;
+        normal = await api.list();
+        archived = await api.list(state: 'ARCHIVED');
+      }
       final remoteById = <String, Note>{
         for (final note in normal) note.id: note,
         for (final note in archived) note.id: note,
@@ -1002,12 +1107,46 @@ class AppState extends ChangeNotifier {
         }
         merged.add(current);
       }
-      merged.addAll(notes.where((note) => note.isLocal));
+      if (incremental) {
+        // Nur geänderte Notizen wurden geladen: alle anderen bleiben unverändert.
+        merged.addAll(notes.where((note) => !remoteById.containsKey(note.id)));
+      } else {
+        merged.addAll(notes.where((note) => note.isLocal));
+        var recreated = 0;
+        for (final note in List.of(notes)) {
+          if (note.isLocal || remoteById.containsKey(note.id)) continue;
+          if (note.busy) {
+            merged.add(note); // wird gerade gesendet
+            continue;
+          }
+          if (!note.dirty || note.deleted) continue; // wirklich entfernt
+          // Lokal geändert, auf dem Server aber nicht mehr vorhanden
+          // (z. B. im Web gelöscht): als neue Notiz erneut anlegen.
+          final oldId = note.id;
+          note.id =
+              'local-${DateTime.now().microsecondsSinceEpoch}-${recreated++}';
+          if (widgetIds.remove(oldId)) widgetIds.add(note.id);
+          note.relations = [];
+          note.dirtyFields.addAll({'content', 'pinned', 'state', 'visibility'});
+          if (note.space != null) note.dirtyFields.add('space');
+          merged.add(note);
+          LogService.log('Notiz $oldId fehlt auf dem Server, wird neu angelegt');
+          _schedulePush(note);
+        }
+        if (recreated > 0) {
+          notice =
+              '$recreated lokal geänderte Notiz(en) gab es auf dem Server nicht '
+              'mehr und werden dort neu angelegt.';
+        }
+      }
       notes = merged;
+      _lastSyncStart = startedAt;
+      if (!incremental) _lastFullSync = startedAt;
       await _persist();
       LogService.log('Sync fertig: ${notes.length} Notizen');
     } catch (e) {
       error = '$e';
+      if (e is MemosApiException && e.statusCode == 401) authFailed = true;
       LogService.log('Sync fehlgeschlagen: $e');
     } finally {
       syncing = false;
@@ -1018,7 +1157,13 @@ class AppState extends ChangeNotifier {
   Future<List<int>> fetchAttachment(String name) =>
       _api.downloadAttachment(name.split('/').last);
 
-  Future<void> onForeground() => _updateWidget();
+  /// Anhang-Bytes über den Speicher-/Festplatten-Cache.
+  Future<Uint8List> attachmentBytes(String name) => attachmentCache.get(name);
+
+  Future<void> onForeground() async {
+    await _updateWidget();
+    if (configured) unawaited(sync());
+  }
 
   Future<void> onBackground() async {
     try {
@@ -1033,6 +1178,12 @@ class AppState extends ChangeNotifier {
     await LogService.flush();
   }
 }
+
+bool _isNetworkError(Object e) =>
+    e is SocketException ||
+    e is TimeoutException ||
+    e is HandshakeException ||
+    e is ClientException;
 
 List<String> _extractTags(String content) {
   final tags = <String>{};

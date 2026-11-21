@@ -14,12 +14,20 @@ class MemosApiException implements Exception {
 
   const MemosApiException(this.statusCode, this.message);
 
+  bool get isUnauthorized => statusCode == 401;
+
   @override
-  String toString() => 'HTTP $statusCode: $message';
+  String toString() => isUnauthorized
+      ? 'Anmeldung abgelehnt (HTTP 401): Token ungültig oder abgelaufen. '
+            'Bitte in den Einstellungen ein neues Token eintragen.'
+      : 'HTTP $statusCode: $message';
 }
 
 class MemosApi {
   static const _uploadChunkSize = 2 * 1024 * 1024;
+
+  /// Gemeinsamer Client für alle Anfragen (Keep-Alive, eine TLS-Verbindung).
+  static final http.Client _shared = http.Client();
   final http.Client? _client;
   final String base;
   final String token;
@@ -74,24 +82,12 @@ class MemosApi {
     if (LogService.enabled) await _dns(uri.host);
     final sw = Stopwatch()..start();
     try {
-      final client = _client;
+      final client = _client ?? _shared;
       final response = await switch (method) {
-        'GET' =>
-          client == null
-              ? http.get(uri, headers: _h)
-              : client.get(uri, headers: _h),
-        'POST' =>
-          client == null
-              ? http.post(uri, headers: _h, body: body)
-              : client.post(uri, headers: _h, body: body),
-        'PATCH' =>
-          client == null
-              ? http.patch(uri, headers: _h, body: body)
-              : client.patch(uri, headers: _h, body: body),
-        _ =>
-          client == null
-              ? http.delete(uri, headers: _h)
-              : client.delete(uri, headers: _h),
+        'GET' => client.get(uri, headers: _h),
+        'POST' => client.post(uri, headers: _h, body: body),
+        'PATCH' => client.patch(uri, headers: _h, body: body),
+        _ => client.delete(uri, headers: _h),
       }.timeout(const Duration(seconds: 60));
       await LogService.log(
         '<-- ${response.statusCode} nach ${sw.elapsedMilliseconds} ms, '
@@ -176,7 +172,10 @@ class MemosApi {
     _check(await _send('DELETE', _u('spaces/${space.id}')));
   }
 
-  Future<List<Note>> list({String state = 'NORMAL'}) async {
+  Future<List<Note>> list({
+    String state = 'NORMAL',
+    DateTime? updatedSince,
+  }) async {
     final result = <Note>[];
     String? pageToken;
     do {
@@ -185,6 +184,9 @@ class MemosApi {
         _u('memos', {
           'pageSize': '200',
           'state': state,
+          if (updatedSince != null)
+            'filter':
+                'updated_ts >= timestamp("${updatedSince.toUtc().toIso8601String().substring(0, 19)}Z")',
           ...?(pageToken == null ? null : {'pageToken': pageToken}),
         }),
       );

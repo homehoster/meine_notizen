@@ -57,7 +57,7 @@ Grundprinzipien:
 
 | Datei | Aufgabe |
 |-------|---------|
-| `main.dart` | Einstiegspunkt. Initialisiert `AppState` und das Widget, baut `MaterialApp` (Hell/Dunkel/System, Farbschema Teal), verarbeitet Widget-Links (`openWidgetUri`) und leitet App-Lebenszyklus-Ereignisse an `AppState` weiter. |
+| `main.dart` | Einstiegspunkt. Initialisiert `AppState` und das Widget, baut `MaterialApp` (Hell/Dunkel/System, Farbschema Blau), verarbeitet Widget-Links (`openWidgetUri`) und leitet App-Lebenszyklus-Ereignisse an `AppState` weiter. |
 | `models/note.dart` | Datenmodell `Note` samt Titel-Ermittlung und JSON-/Server-Konvertierung. |
 | `models/task_doc.dart` | Markdown-Parser/-Serializer für Listen (`Task`, `TaskSeg`, `TextSeg`), Hilfsfunktionen für Aufgaben und die Widget-Vorschau (`widgetPreview`). |
 | `state/app_state.dart` | Zentraler Zustand: Notizen, Einstellungen, Sync, verzögertes Senden, Widget-Aktualisierung. |
@@ -226,11 +226,15 @@ Eine neue Notiz bekommt zunächst die ID `local-<Mikrosekunden>`. Beim ersten Se
 
 ### Konflikte
 
-Es gibt **keine inhaltliche Zusammenführung** („Last write wins“): Wird dieselbe Notiz auf zwei Geräten geändert, überschreibt das Gerät, das zuerst oder zuletzt synchronisiert, den anderen Stand. Das Gerät mit nicht gesendeten Änderungen gewinnt beim nächsten Sync.
+Es gibt **keine inhaltliche Zusammenführung** („Last write wins“): Wird dieselbe Notiz auf zwei Geräten geändert, überschreibt das Gerät, das zuerst oder zuletzt synchronisiert, den anderen Stand. Das Gerät mit nicht gesendeten Änderungen gewinnt beim nächsten Sync. Existiert eine lokal geänderte Notiz auf dem Server nicht mehr (z. B. im Web gelöscht), wird sie nicht verworfen, sondern dort als neue Notiz angelegt; die Startseite zeigt einen Hinweis.
 
 ### Fehler
 
 Schlägt ein Vorgang fehl, bleibt die Notiz als `dirty` markiert (Wolken-Symbol) und wird beim nächsten Sync erneut gesendet. Auf der Startseite erscheint ein Banner „Sync-Fehler …“ mit der Schaltfläche **Erneut**.
+
+Bei einem Netzwerkfehler bricht der Sync beim ersten fehlgeschlagenen Versand ab, statt für jede Notiz bis zum Timeout zu warten. Fehlgeschlagene Notizen werden automatisch mit wachsendem Abstand erneut versucht (8 s, 16 s, 32 s … höchstens 5 Minuten). Bei HTTP 401 (Token ungültig oder abgelaufen) wird nicht wiederholt; das Banner bietet stattdessen den Sprung in die Einstellungen an.
+
+**Inkrementeller Sync:** Der erste Sync nach dem Start lädt alles. Beim Zurückkehren in die App werden danach nur Notizen mit neuerem `updated_ts` geladen. Das Sync-Symbol und Ziehen nach unten laden immer vollständig (nur so fallen auf dem Server gelöschte Notizen auf); spätestens nach 6 Stunden wird ebenfalls wieder vollständig abgeglichen. Lehnt der Server den Filter ab, fällt die App auf den vollständigen Abgleich zurück.
 
 ---
 
@@ -382,7 +386,7 @@ Für Kamera, Mikrofon und Standort fragt die App bei Bedarf die Plattformberecht
 - Leerer Zustand: „Noch keine Notizen“.
 - Größe: mindestens 110 × 110 dp, horizontal und vertikal skalierbar.
 
-**Auswahl:** Sind Notizen über das Widget-Symbol markiert, zeigt das Widget nur diese; ist keine markiert, zeigt es alle sichtbaren Notizen.
+**Auswahl:** Sind Notizen über das Widget-Symbol markiert, zeigt das Widget nur diese; ist keine markiert, zeigt es alle sichtbaren Notizen (höchstens 30).
 
 **Vorschau (`widgetPreview`):** Die erste nicht leere Zeile ist der Titel (separat). Danach werden bis zu 5 Zeilen gebildet; Markdown-Zeichen werden entfernt, Aufgaben erscheinen als `☐ …`, Aufzählungen als `• …`, Nummerierungen als `1. …`. Erledigte Aufgaben fehlen.
 
@@ -488,15 +492,17 @@ Der Dart-Code läuft auf iOS. Noch **nicht** umgesetzt:
 | `shared_preferences` | Einstellungen (URL, Design, Logging) |
 | `path_provider`, `path` | Speicherorte für Notizen und Log |
 | `home_widget` | Datenaustausch mit dem Homescreen-Widget |
-| `flutter_markdown` | Darstellung von Markdown in der Ansicht |
+| `flutter_markdown_plus` | Darstellung von Markdown in der Ansicht |
 | `url_launcher` | Öffnen von Links |
 | `share_plus` | Teilen der Logdatei |
 | `file_picker` | Dateien über den Systemdialog auswählen |
 | `image_picker` | Bilder auswählen bzw. Kamera verwenden |
-| `record`, `audioplayers` | Audio aufnehmen und wiedergeben |
+| `record` | Audio aufnehmen |
+| `open_filex` | Anhänge mit der passenden App des Systems öffnen |
+| `package_info_plus` | App-Version anzeigen |
 | `geolocator` | Standortberechtigung und aktuelle Koordinaten |
 
-> ℹ️ `flutter_markdown` wird vom Flutter-Team nicht mehr weiterentwickelt. Eine Alternative ist der Nachfolger `flutter_markdown_plus`.
+> ℹ️ Für Markdown wird `flutter_markdown_plus` verwendet (Nachfolger des eingestellten `flutter_markdown`).
 
 ---
 
