@@ -10,6 +10,7 @@ import '../models/note.dart';
 import '../models/saved_view.dart';
 import '../models/space.dart';
 import '../models/task_doc.dart';
+import '../locales/app_localizations.dart';
 import '../services/api.dart';
 import '../state/app_state.dart';
 import '../widgets/markdown_image_blocker.dart';
@@ -21,12 +22,17 @@ void openNote(BuildContext c, Note n) =>
     Navigator.of(c)
         .push(MaterialPageRoute(builder: (_) => NoteScreen(note: n)));
 
-Widget _menuLabel(IconData icon, String label, {TextStyle? style}) => Row(
+Widget _menuLabel(
+  BuildContext context,
+  IconData icon,
+  String label, {
+  TextStyle? style,
+}) => Row(
   mainAxisSize: MainAxisSize.min,
   children: [
     Icon(icon, size: 18, color: style?.color),
     const SizedBox(width: 12),
-    Text(label, style: style),
+    Text(context.tr(label), style: style),
   ],
 );
 
@@ -37,12 +43,13 @@ IconData _visibilityIcon(String visibility) => switch (visibility) {
   _ => Icons.lock_outline,
 };
 
-String _visibilityLabel(String visibility) => switch (visibility) {
-  'PUBLIC' => 'Öffentlich',
-  'PROTECTED' => 'Für Mitglieder',
-  'SPACE' => 'Für Bereichsmitglieder',
-  _ => 'Privat',
-};
+String _visibilityLabel(BuildContext context, String visibility) =>
+    switch (visibility) {
+      'PUBLIC' => context.tr('Öffentlich'),
+      'PROTECTED' => context.tr('Für Mitglieder'),
+      'SPACE' => context.tr('Für Bereichsmitglieder'),
+      _ => context.tr('Privat'),
+    };
 
 Future<void> _shareNote(BuildContext context, AppState state, Note note) async {
   final String base;
@@ -50,8 +57,8 @@ Future<void> _shareNote(BuildContext context, AppState state, Note note) async {
     base = MemosApi.normalizeBaseUrl(state.baseUrl);
   } on FormatException {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Keine gültige Server-URL eingerichtet'),
+      SnackBar(
+        content: Text(context.tr('Keine gültige Server-URL eingerichtet')),
       ),
     );
     return;
@@ -64,7 +71,11 @@ Future<void> _shareNote(BuildContext context, AppState state, Note note) async {
   } catch (e) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Notiz-Link konnte nicht geteilt werden: $e')),
+      SnackBar(
+        content: Text(
+          '${context.tr('Notiz-Link konnte nicht geteilt werden')}: $e',
+        ),
+      ),
     );
   }
 }
@@ -80,7 +91,9 @@ Future<void> _editSpace(
   final result = await showDialog<List<String>>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text(space == null ? 'Bereich anlegen' : 'Bereich bearbeiten'),
+      title: Text(
+        context.tr(space == null ? 'Bereich anlegen' : 'Bereich bearbeiten'),
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -88,16 +101,20 @@ Future<void> _editSpace(
             TextField(
               controller: title,
               autofocus: true,
-              decoration: const InputDecoration(labelText: 'Name'),
+              decoration: InputDecoration(labelText: context.tr('Name')),
             ),
             TextField(
               controller: emoji,
-              decoration: const InputDecoration(labelText: 'Symbol / Emoji'),
+              decoration: InputDecoration(
+                labelText: context.tr('Symbol / Emoji'),
+              ),
             ),
             TextField(
               controller: description,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Beschreibung'),
+              decoration: InputDecoration(
+                labelText: context.tr('Beschreibung'),
+              ),
             ),
           ],
         ),
@@ -105,7 +122,7 @@ Future<void> _editSpace(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Abbrechen'),
+          child: Text(context.tr('Abbrechen')),
         ),
         FilledButton(
           onPressed: () {
@@ -117,7 +134,7 @@ Future<void> _editSpace(
               ]);
             }
           },
-          child: const Text('Speichern'),
+          child: Text(context.tr('Speichern')),
         ),
       ],
     ),
@@ -138,7 +155,11 @@ Future<void> _editSpace(
   } catch (e) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Bereich konnte nicht gespeichert werden: $e')),
+      SnackBar(
+        content: Text(
+          '${context.tr('Bereich konnte nicht gespeichert werden')}: $e',
+        ),
+      ),
     );
   }
 }
@@ -154,23 +175,23 @@ Future<void> _deleteSpace(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Bereich löschen?'),
+      title: Text(context.tr('Bereich löschen?')),
       content: Text(
-        'Memos löscht mit dem Bereich auch alle darin abgelegten Notizen '
-        'dauerhaft. In der lokalen Liste sind $count Notizen zugeordnet. '
-        'Diese Aktion kann nicht rückgängig gemacht werden.',
+        '${context.tr('Memos löscht mit dem Bereich auch alle darin abgelegten Notizen dauerhaft.')} '
+        '${context.tr('In der lokalen Liste sind')} $count ${context.tr('Notizen zugeordnet.')} '
+        '${context.tr('Diese Aktion kann nicht rückgängig gemacht werden.')}',
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Abbrechen'),
+          child: Text(context.tr('Abbrechen')),
         ),
         FilledButton(
           style: FilledButton.styleFrom(
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Bereich und Notizen löschen'),
+          child: Text(context.tr('Bereich und Notizen löschen')),
         ),
       ],
     ),
@@ -181,7 +202,11 @@ Future<void> _deleteSpace(
   } catch (e) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Bereich konnte nicht gelöscht werden: $e')),
+      SnackBar(
+        content: Text(
+          '${context.tr('Bereich konnte nicht gelöscht werden')}: $e',
+        ),
+      ),
     );
   }
 }
@@ -214,7 +239,9 @@ Future<void> _editView(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setDialogState) => AlertDialog(
-        title: Text(view == null ? 'Ansicht anlegen' : 'Ansicht bearbeiten'),
+        title: Text(
+          context.tr(view == null ? 'Ansicht anlegen' : 'Ansicht bearbeiten'),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -222,34 +249,41 @@ Future<void> _editView(
               TextField(
                 controller: name,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(labelText: context.tr('Name')),
               ),
               TextField(
                 controller: icon,
-                decoration: const InputDecoration(labelText: 'Symbol / Emoji'),
+                decoration: InputDecoration(
+                  labelText: context.tr('Symbol / Emoji'),
+                ),
               ),
               TextField(
                 controller: textContains,
-                decoration: const InputDecoration(
-                  labelText: 'Text enthält (optional)',
+                decoration: InputDecoration(
+                  labelText: context.tr('Text enthält (optional)'),
                 ),
               ),
               TextField(
                 controller: tag,
-                decoration: const InputDecoration(labelText: 'Tag (optional)'),
+                decoration: InputDecoration(
+                  labelText: context.tr('Tag (optional)'),
+                ),
               ),
               DropdownButtonFormField<String>(
                 initialValue: pinned,
-                decoration: const InputDecoration(labelText: 'Anpinnen'),
-                items: const [
-                  DropdownMenuItem(value: 'any', child: Text('Beliebig')),
+                decoration: InputDecoration(labelText: context.tr('Anpinnen')),
+                items: [
+                  DropdownMenuItem(
+                    value: 'any',
+                    child: Text(context.tr('Beliebig')),
+                  ),
                   DropdownMenuItem(
                     value: 'pinned',
-                    child: Text('Nur angepinnte'),
+                    child: Text(context.tr('Nur angepinnte')),
                   ),
                   DropdownMenuItem(
                     value: 'notPinned',
-                    child: Text('Nicht angepinnt'),
+                    child: Text(context.tr('Nicht angepinnt')),
                   ),
                 ],
                 onChanged: (value) =>
@@ -257,22 +291,40 @@ Future<void> _editView(
               ),
               DropdownButtonFormField<String>(
                 initialValue: attachments,
-                decoration: const InputDecoration(labelText: 'Anhänge'),
-                items: const [
-                  DropdownMenuItem(value: 'any', child: Text('Beliebig')),
-                  DropdownMenuItem(value: 'yes', child: Text('Mit Anhängen')),
-                  DropdownMenuItem(value: 'no', child: Text('Ohne Anhänge')),
+                decoration: InputDecoration(labelText: context.tr('Anhänge')),
+                items: [
+                  DropdownMenuItem(
+                    value: 'any',
+                    child: Text(context.tr('Beliebig')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'yes',
+                    child: Text(context.tr('Mit Anhängen')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'no',
+                    child: Text(context.tr('Ohne Anhänge')),
+                  ),
                 ],
                 onChanged: (value) =>
                     setDialogState(() => attachments = value ?? 'any'),
               ),
               DropdownButtonFormField<String>(
                 initialValue: location,
-                decoration: const InputDecoration(labelText: 'Standort'),
-                items: const [
-                  DropdownMenuItem(value: 'any', child: Text('Beliebig')),
-                  DropdownMenuItem(value: 'yes', child: Text('Mit Standort')),
-                  DropdownMenuItem(value: 'no', child: Text('Ohne Standort')),
+                decoration: InputDecoration(labelText: context.tr('Standort')),
+                items: [
+                  DropdownMenuItem(
+                    value: 'any',
+                    child: Text(context.tr('Beliebig')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'yes',
+                    child: Text(context.tr('Mit Standort')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'no',
+                    child: Text(context.tr('Ohne Standort')),
+                  ),
                 ],
                 onChanged: (value) =>
                     setDialogState(() => location = value ?? 'any'),
@@ -283,7 +335,7 @@ Future<void> _editView(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Abbrechen'),
+            child: Text(context.tr('Abbrechen')),
           ),
           FilledButton(
             onPressed: () {
@@ -299,7 +351,7 @@ Future<void> _editView(
                 });
               }
             },
-            child: const Text('Speichern'),
+            child: Text(context.tr('Speichern')),
           ),
         ],
       ),
@@ -349,7 +401,7 @@ Future<void> _chooseNoteSpace(
         children: [
           ListTile(
             leading: const Icon(Icons.folder_off_outlined),
-            title: const Text('Keinem Bereich zuordnen'),
+            title: Text(context.tr('Keinem Bereich zuordnen')),
             onTap: () => Navigator.pop(context, ''),
           ),
           for (final space in state.spaces)
@@ -372,19 +424,19 @@ Future<void> _chooseNoteSpace(
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Notiz in Bereich verschieben?'),
+        title: Text(context.tr('Notiz in Bereich verschieben?')),
         content: Text(
-          'Die Notiz wird für Mitglieder des Bereichs „${selectedSpace!.title}“ '
-          'sichtbar. Ihre bisherige Sichtbarkeit wird dabei auf „Bereich“ gesetzt.',
+          '${context.tr('Die Notiz wird für Mitglieder des Bereichs')} „${selectedSpace!.title}“ '
+          '${context.tr('sichtbar. Ihre bisherige Sichtbarkeit wird dabei auf „Bereich“ gesetzt.')}',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
+            child: Text(context.tr('Abbrechen')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Verschieben'),
+            child: Text(context.tr('Verschieben')),
           ),
         ],
       ),
@@ -468,7 +520,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                title,
+                context.tr(title),
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: theme.colorScheme.primary,
@@ -477,7 +529,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             if (onAdd != null)
               IconButton(
-                tooltip: '$title anlegen',
+                tooltip: context.tr(
+                  title == 'Bereiche'
+                      ? 'Bereiche anlegen'
+                      : 'Ansichten anlegen',
+                ),
                 icon: const Icon(Icons.add),
                 onPressed: onAdd,
               ),
@@ -520,12 +576,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Meine Notizen',
+                          context.tr('Meine Notizen'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleMedium,
                         ),
-                        const Text('für UseMemo'),
+                        Text(context.tr('für UseMemo')),
                       ],
                     ),
                   ),
@@ -535,13 +591,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ListTile(
             leading: const Icon(Icons.notes_outlined),
-            title: const Text('Alle Notizen'),
+            title: Text(context.tr('Alle Notizen')),
             selected: state.navigation.kind == NavigationKind.all,
             onTap: () => select(const NavigationTarget(NavigationKind.all)),
           ),
           ListTile(
             leading: const Icon(Icons.archive_outlined),
-            title: const Text('Archiv'),
+            title: Text(context.tr('Archiv')),
             selected: state.navigation.kind == NavigationKind.archive,
             onTap: () => select(const NavigationTarget(NavigationKind.archive)),
           ),
@@ -579,7 +635,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             NavigationTarget(NavigationKind.space, space.id),
                           ),
                           trailing: PopupMenuButton<String>(
-                            tooltip: 'Bereichsoptionen',
+                            tooltip: context.tr('Bereichsoptionen'),
                             onSelected: (value) {
                               if (value == 'edit') {
                                 _editSpace(context, state, space: space);
@@ -591,6 +647,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               PopupMenuItem(
                                 value: 'edit',
                                 child: _menuLabel(
+                                  context,
                                   Icons.edit_outlined,
                                   'Bearbeiten',
                                 ),
@@ -598,6 +655,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               PopupMenuItem(
                                 value: 'delete',
                                 child: _menuLabel(
+                                  context,
                                   Icons.delete_outline,
                                   'Löschen',
                                 ),
@@ -630,7 +688,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           NavigationTarget(NavigationKind.view, view.id),
                         ),
                         trailing: PopupMenuButton<String>(
-                          tooltip: 'Ansichtsoptionen',
+                          tooltip: context.tr('Ansichtsoptionen'),
                           onSelected: (value) {
                             if (value == 'edit') {
                               _editView(context, state, view: view);
@@ -642,6 +700,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             PopupMenuItem(
                               value: 'edit',
                               child: _menuLabel(
+                                context,
                                 Icons.edit_outlined,
                                 'Bearbeiten',
                               ),
@@ -649,6 +708,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             PopupMenuItem(
                               value: 'delete',
                               child: _menuLabel(
+                                context,
                                 Icons.delete_outline,
                                 'Löschen',
                               ),
@@ -729,7 +789,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ListTile(
             dense: true,
             leading: const Icon(Icons.settings_outlined),
-            title: const Text('Einstellungen'),
+            title: Text(context.tr('Einstellungen')),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
@@ -742,7 +802,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: AppVersionText(
               showBuild: false,
-              prefix: 'meine Notizen v',
+              prefix: '${context.tr('Meine Notizen')} v',
               style: TextStyle(color: Colors.grey[400], fontSize: 11),
             ),
           ),
@@ -781,10 +841,12 @@ class _HomeScreenState extends State<HomeScreen> {
         : filterNotesByQuery(s.visible, query);
     return Scaffold(
       appBar: AppBar(
-        title: Text(s.screenTitle),
+        title: Text(context.tr(s.screenTitle)),
         actions: [
           IconButton(
-            tooltip: _isSearchOpen ? 'Suche schließen' : 'Notizen suchen',
+            tooltip: context.tr(
+              _isSearchOpen ? 'Suche schließen' : 'Notizen suchen',
+            ),
             icon: Icon(_isSearchOpen ? Icons.close : Icons.search),
             onPressed: _toggleSearch,
           ),
@@ -800,7 +862,7 @@ class _HomeScreenState extends State<HomeScreen> {
           else
             IconButton(
               icon: const Icon(Icons.sync),
-              tooltip: 'Vollständig synchronisieren',
+              tooltip: context.tr('Vollständig synchronisieren'),
               onPressed: () => s.sync(full: true),
             ),
         ],
@@ -812,15 +874,20 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialBanner(
               content: Text(s.notice!),
               actions: [
-                TextButton(onPressed: s.dismissNotice, child: const Text('OK')),
+                TextButton(
+                  onPressed: s.dismissNotice,
+                  child: Text(context.tr('OK')),
+                ),
               ],
             ),
           if (s.error != null)
             MaterialBanner(
               content: Text(
                 s.authFailed
-                    ? 'Anmeldung fehlgeschlagen: Das Token ist ungültig oder abgelaufen.'
-                    : 'Sync-Fehler: ${s.error}',
+                    ? context.tr(
+                        'Anmeldung fehlgeschlagen: Das Token ist ungültig oder abgelaufen.',
+                      )
+                    : '${context.tr('Sync-Fehler')}: ${s.error}',
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -828,14 +895,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (s.authFailed)
                   TextButton(
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SettingsScreen(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
                     ),
-                    child: const Text('Einstellungen'),
+                    child: Text(context.tr('Einstellungen')),
                   )
                 else
-                  TextButton(onPressed: s.sync, child: const Text('Erneut')),
+                  TextButton(
+                    onPressed: s.sync,
+                    child: Text(context.tr('Erneut')),
+                  ),
               ],
             ),
           if (_isSearchOpen)
@@ -847,12 +915,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 onChanged: _searchChanged,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                  hintText: 'Notizen suchen',
+                  hintText: context.tr('Notizen suchen'),
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: query.isEmpty
                       ? null
                       : IconButton(
-                          tooltip: 'Suche löschen',
+                          tooltip: context.tr('Suche löschen'),
                           icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchController.clear();
@@ -873,7 +941,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           builder: (_) => const SettingsScreen(),
                         ),
                       ),
-                      child: const Text('Server & Token einrichten'),
+                      child: Text(context.tr('Server & Token einrichten')),
                     ),
                   )
                 : RefreshIndicator(
@@ -929,6 +997,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           PopupMenuItem(
                                             value: 'pin',
                                             child: _menuLabel(
+                                              ctx,
                                               Icons.push_pin_outlined,
                                               n.pinned ? 'Lösen' : 'Anpinnen',
                                             ),
@@ -937,6 +1006,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             PopupMenuItem(
                                               value: 'archive',
                                               child: _menuLabel(
+                                                ctx,
                                                 Icons.archive_outlined,
                                                 'Archivieren',
                                               ),
@@ -945,6 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             PopupMenuItem(
                                               value: 'restore',
                                               child: _menuLabel(
+                                                ctx,
                                                 Icons.unarchive_outlined,
                                                 'Wiederherstellen',
                                               ),
@@ -953,6 +1024,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             PopupMenuItem(
                                               value: 'space',
                                               child: _menuLabel(
+                                                ctx,
                                                 Icons.folder_open_outlined,
                                                 'Bereich zuordnen',
                                               ),
@@ -961,6 +1033,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             PopupMenuItem(
                                               value: 'share',
                                               child: _menuLabel(
+                                                ctx,
                                                 Icons.share_outlined,
                                                 'Link teilen',
                                               ),
@@ -968,6 +1041,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           PopupMenuItem(
                                             value: 'widget',
                                             child: _menuLabel(
+                                              ctx,
                                               Icons.widgets_outlined,
                                               s.widgetIds.contains(n.id)
                                                   ? 'Aus Widget entfernen'
@@ -977,6 +1051,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           PopupMenuItem(
                                             value: 'delete',
                                             child: _menuLabel(
+                                              ctx,
                                               Icons.delete_outline,
                                               'Löschen',
                                               style: TextStyle(
@@ -993,7 +1068,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                       if (s.widgetIds.contains(n.id))
                                         const Icon(Icons.widgets, size: 18),
                                       Tooltip(
-                                        message: _visibilityLabel(n.visibility),
+                                        message: _visibilityLabel(
+                                          ctx,
+                                          n.visibility,
+                                        ),
                                         child: Icon(
                                           _visibilityIcon(n.visibility),
                                           size: 18,
@@ -1155,7 +1233,7 @@ class _NotePreview extends StatelessWidget {
           ),
         if (heading == null && shown.isEmpty)
           Text(
-            'Leere Notiz',
+            context.tr('Leere Notiz'),
             style: theme.textTheme.bodyMedium?.copyWith(
               fontStyle: FontStyle.italic,
             ),

@@ -16,6 +16,7 @@ import '../models/note.dart';
 import '../models/saved_view.dart';
 import '../models/space.dart';
 import '../models/task_doc.dart';
+import '../locales/app_localizations.dart';
 import '../services/api.dart';
 import '../services/attachment_cache.dart';
 import '../services/log.dart';
@@ -54,6 +55,7 @@ class AppState extends ChangeNotifier {
   String token = '';
   String serverVersion = '';
   ThemeMode themeMode = ThemeMode.system;
+  String languageCode = 'system';
   bool blockMarkdownImages = true;
   bool assistedEditingEnabled = true;
   List<Note> notes = [];
@@ -91,9 +93,7 @@ class AppState extends ChangeNotifier {
   List<Note> get visible {
     if (_visibleRevision != _revision) {
       _visibleCache = _sorted(
-        notes.where(
-          (note) => !note.deleted && note.state == NoteState.normal,
-        ),
+        notes.where((note) => !note.deleted && note.state == NoteState.normal),
       );
       _visibleRevision = _revision;
     }
@@ -188,6 +188,12 @@ class AppState extends ChangeNotifier {
     final preferences = await SharedPreferences.getInstance();
     baseUrl = preferences.getString('url') ?? '';
     themeMode = ThemeMode.values[preferences.getInt('theme') ?? 0];
+    final savedLanguage = preferences.getString('language') ?? 'system';
+    languageCode =
+        savedLanguage == 'system' ||
+            appLanguages.any((language) => language.code == savedLanguage)
+        ? savedLanguage
+        : 'system';
     blockMarkdownImages = preferences.getBool('blockMarkdownImages') ?? true;
     assistedEditingEnabled =
         preferences.getBool('assistedEditingEnabled') ?? true;
@@ -254,6 +260,17 @@ class AppState extends ChangeNotifier {
     themeMode = mode;
     final preferences = await SharedPreferences.getInstance();
     await preferences.setInt('theme', mode.index);
+    notifyListeners();
+  }
+
+  Future<void> setLanguage(String code) async {
+    if (code != 'system' &&
+        !appLanguages.any((language) => language.code == code)) {
+      throw ArgumentError.value(code, 'code', 'Unsupported app language');
+    }
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString('language', code);
+    languageCode = code;
     notifyListeners();
   }
 
@@ -1130,7 +1147,9 @@ class AppState extends ChangeNotifier {
           note.dirtyFields.addAll({'content', 'pinned', 'state', 'visibility'});
           if (note.space != null) note.dirtyFields.add('space');
           merged.add(note);
-          LogService.log('Notiz $oldId fehlt auf dem Server, wird neu angelegt');
+          LogService.log(
+            'Notiz $oldId fehlt auf dem Server, wird neu angelegt',
+          );
           _schedulePush(note);
         }
         if (recreated > 0) {

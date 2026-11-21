@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import '../locales/app_localizations.dart';
 import '../models/task_doc.dart';
 import 'markdown_image_blocker.dart';
 
@@ -144,7 +145,7 @@ class _TaskSegViewState extends State<TaskSegView> {
         if (widget.assistedEditingEnabled && done.isNotEmpty)
           ExpansionTile(
             key: ObjectKey(widget.seg),
-            title: Text('Erledigt ($doneCount)'),
+            title: Text('${context.tr('Erledigt')} ($doneCount)'),
             children: [for (final t in done) ..._doneRows(t, 0)],
           ),
       ],
@@ -323,10 +324,10 @@ class _TaskRowState extends State<_TaskRow> {
                       keyboardType: TextInputType.text,
                       textInputAction: TextInputAction.done,
                       inputFormatters: [FilteringTextInputFormatter.deny('\n')],
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         isDense: true,
                         border: InputBorder.none,
-                        hintText: 'Neuer Eintrag',
+                        hintText: context.tr('Neuer Eintrag'),
                         contentPadding: EdgeInsets.symmetric(vertical: 10),
                       ),
                       onChanged: (value) {
@@ -358,7 +359,7 @@ class _TaskRowState extends State<_TaskRow> {
             if (canEdit) ...[
               IconButton(
                 icon: const Icon(Icons.add),
-                tooltip: 'Aufgabe auf dieser Ebene hinzufügen',
+                tooltip: context.tr('Aufgabe auf dieser Ebene hinzufügen'),
                 onPressed: () => host._addSibling(widget.siblings, t),
               ),
               PopupMenuButton<String>(
@@ -369,12 +370,12 @@ class _TaskRowState extends State<_TaskRow> {
                 itemBuilder: (_) => [
                   PopupMenuItem(
                     value: 'c',
-                    child: Text('Unteraufgabe hinzufügen'),
+                    child: Text(context.tr('Unteraufgabe hinzufügen')),
                   ),
                   PopupMenuItem(
                     value: 'd',
                     child: Text(
-                      'Löschen',
+                      context.tr('Löschen'),
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.error,
                       ),
@@ -398,7 +399,9 @@ class _TaskRowState extends State<_TaskRow> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                       child: Text(
-                        'Bereits vorhanden – antippen statt neu anlegen',
+                        context.tr(
+                          'Bereits vorhanden – antippen statt neu anlegen',
+                        ),
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ),
@@ -417,7 +420,9 @@ class _TaskRowState extends State<_TaskRow> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: m.done
-                            ? const Text('erledigt – wird wieder geöffnet')
+                            ? Text(
+                                context.tr('erledigt – wird wieder geöffnet'),
+                              )
                             : null,
                         onTap: () => host.edit.reuse(t, m),
                       ),

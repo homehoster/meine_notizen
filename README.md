@@ -48,6 +48,7 @@ Das Hauptaugenmerk liegt auf einer **leichten Erfassung**: Listen, Aufgaben und 
 - 🔄 **Sync mit Memos** – optional, mit Server-URL und Access Token. Siehe [unten](#mit-memos-synchronisieren).
 - 📱 **Homescreen-Widget (Android)** – zeigt eine Auswahl deiner Notizen und springt per Tipp direkt in die Notiz. Über das „+“ im Widget legst du eine neue Notiz an.
 - 🌗 **Hell, Dunkel oder System** – das Erscheinungsbild stellst du in den Einstellungen ein.
+- 🌍 **46 Sprachen** – die Sprache folgt standardmäßig dem System; gemeinsame Begriffe basieren auf den Memos-Übersetzungen, app-eigene Texte fallen auf Englisch zurück.
 - 🔐 **Token sicher abgelegt** – im Android Keystore bzw. in der iOS Keychain, nicht im Klartext.
 
 ---
@@ -225,6 +226,7 @@ lib/
 ├── models/                   # Datenmodelle (Notiz, Aufgabe, Markdown-Parser)
 ├── state/                    # State-Management (AppState: Notizen, Sync, Widget)
 ├── services/                 # Server-API, lokaler Speicher, Log
+├── locales/                  # App-Texte und Sprachauflösung
 ├── screens/                  # Bildschirme (Startseite, Notiz, Einstellungen)
 └── widgets/                  # Wiederverwendbare Bausteine (Listen-Ansicht)
 

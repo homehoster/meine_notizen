@@ -3,22 +3,26 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
 
+import 'locales/app_localizations.dart';
 import 'screens/home_screen.dart';
 import 'screens/note_screen.dart';
 import 'state/app_state.dart';
 
 final navKey = GlobalKey<NavigatorState>();
-const _widgetChannel =
-    MethodChannel('com.github.homehoster.meine_notizen/widget');
+const _widgetChannel = MethodChannel(
+  'com.github.homehoster.meine_notizen/widget',
+);
 const _seedColor = Color(0xFF1565C0);
 const _secondaryColor = Color(0xFFF59E0B);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await HomeWidget.setAppGroupId('group.com.github.homehoster.meine_notizen');
+  await AppLocalizations.load();
   final state = AppState();
   await state.init();
   runApp(ChangeNotifierProvider.value(value: state, child: const NotizApp()));
@@ -93,12 +97,12 @@ class _NotizAppState extends State<NotizApp> with WidgetsBindingObserver {
               children: [
                 ListTile(
                   leading: const Icon(Icons.home_outlined),
-                  title: const Text('Meine Notizen öffnen'),
+                  title: Text(context.tr('Meine Notizen öffnen')),
                   onTap: () => Navigator.pop(sheetContext),
                 ),
                 ListTile(
                   leading: const Icon(Icons.add),
-                  title: const Text('Neue Notiz'),
+                  title: Text(context.tr('Neue Notiz')),
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _createNote(context, navigator);
@@ -135,9 +139,24 @@ class _NotizAppState extends State<NotizApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    final supportedLocales = appLanguages.map((language) => language.locale);
+    final titleLocale = s.languageCode == 'system'
+        ? resolveAppLocale(
+            WidgetsBinding.instance.platformDispatcher.locale,
+            supportedLocales,
+          )!
+        : localeForCode(s.languageCode);
     return MaterialApp(
       navigatorKey: navKey,
-      title: 'Notizen',
+      title: AppLocalizations.instance.translate('Meine Notizen', titleLocale),
+      locale: s.languageCode == 'system' ? null : localeForCode(s.languageCode),
+      supportedLocales: supportedLocales,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      localeResolutionCallback: resolveAppLocale,
       themeMode: s.themeMode,
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),

@@ -19,6 +19,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/note.dart';
 import '../models/space.dart';
 import '../models/task_doc.dart';
+import '../locales/app_localizations.dart';
 import '../state/app_state.dart';
 import '../widgets/markdown_image_blocker.dart';
 import '../widgets/task_seg_view.dart';
@@ -37,12 +38,17 @@ enum _AddAction {
   memoReference,
 }
 
-Widget _menuLabel(IconData icon, String label, {TextStyle? style}) => Row(
+Widget _menuLabel(
+  BuildContext context,
+  IconData icon,
+  String label, {
+  TextStyle? style,
+}) => Row(
   mainAxisSize: MainAxisSize.min,
   children: [
     Icon(icon, size: 18, color: style?.color),
     const SizedBox(width: 12),
-    Text(label, style: style),
+    Text(context.tr(label), style: style),
   ],
 );
 
@@ -53,12 +59,13 @@ IconData _visibilityIcon(String visibility) => switch (visibility) {
   _ => Icons.lock_outline,
 };
 
-String _visibilityLabel(String visibility) => switch (visibility) {
-  'PUBLIC' => 'Öffentlich',
-  'PROTECTED' => 'Für Mitglieder',
-  'SPACE' => 'Für Bereichsmitglieder',
-  _ => 'Privat',
-};
+String _visibilityLabel(BuildContext context, String visibility) =>
+    switch (visibility) {
+      'PUBLIC' => context.tr('Öffentlich'),
+      'PROTECTED' => context.tr('Für Mitglieder'),
+      'SPACE' => context.tr('Für Bereichsmitglieder'),
+      _ => context.tr('Privat'),
+    };
 
 class NoteScreen extends StatefulWidget {
   final Note note;
@@ -109,29 +116,23 @@ class _NoteScreenState extends State<NoteScreen> {
   /// Öffnet nur http, https und mailto; alles andere (intent:, file:, tel: …) wird blockiert.
   Future<void> _openLink(String? href) async {
     final msg = ScaffoldMessenger.of(context);
+    final linkTypeBlocked = context.tr(
+      'Dieser Link-Typ wird aus Sicherheitsgründen nicht geöffnet',
+    );
+    final linkOpenFailed = context.tr('Link konnte nicht geöffnet werden');
     final uri = href == null ? null : Uri.tryParse(href.trim());
     if (uri == null ||
         !const {'http', 'https', 'mailto'}.contains(uri.scheme)) {
-      msg.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Dieser Link-Typ wird aus Sicherheitsgründen nicht geöffnet',
-          ),
-        ),
-      );
+      msg.showSnackBar(SnackBar(content: Text(linkTypeBlocked)));
       return;
     }
     try {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok) {
-        msg.showSnackBar(
-          const SnackBar(content: Text('Link konnte nicht geöffnet werden')),
-        );
+        msg.showSnackBar(SnackBar(content: Text(linkOpenFailed)));
       }
     } catch (_) {
-      msg.showSnackBar(
-        const SnackBar(content: Text('Link konnte nicht geöffnet werden')),
-      );
+      msg.showSnackBar(SnackBar(content: Text(linkOpenFailed)));
     }
   }
 
@@ -154,7 +155,7 @@ class _NoteScreenState extends State<NoteScreen> {
         type: 'image/png',
       );
     } catch (e) {
-      await _showError('Bild konnte nicht markiert werden: $e');
+      await _showError('Bild konnte nicht markiert werden', error: e);
     }
   }
 
@@ -223,14 +224,12 @@ class _NoteScreenState extends State<NoteScreen> {
       '.csv' => 'text/csv',
       '.rtf' => 'application/rtf',
       '.doc' => 'application/msword',
-      '.docx' =>
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       '.xls' => 'application/vnd.ms-excel',
       '.xlsx' =>
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       '.ppt' => 'application/vnd.ms-powerpoint',
-      '.pptx' =>
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       '.zip' => 'application/zip',
       '.m4a' => 'audio/mp4',
       '.mp3' => 'audio/mpeg',
@@ -263,63 +262,60 @@ class _NoteScreenState extends State<NoteScreen> {
                 if (assistedEditingEnabled) ...[
                   ListTile(
                     leading: const Icon(Icons.check_box_outlined),
-                    title: const Text('Aufgabe hinzufügen'),
+                    title: Text(context.tr('Aufgabe hinzufügen')),
                     onTap: () => Navigator.pop(context, _AddAction.task),
                   ),
                   ListTile(
                     leading: const Icon(Icons.format_list_bulleted),
-                    title: const Text('Aufzählung hinzufügen'),
+                    title: Text(context.tr('Aufzählung hinzufügen')),
                     onTap: () => Navigator.pop(context, _AddAction.bullet),
                   ),
                   ListTile(
                     leading: const Icon(Icons.format_list_numbered),
-                    title: const Text('Nummerierung hinzufügen'),
-                    onTap: () =>
-                        Navigator.pop(context, _AddAction.numbered),
+                    title: Text(context.tr('Nummerierung hinzufügen')),
+                    onTap: () => Navigator.pop(context, _AddAction.numbered),
                   ),
                   const Divider(height: 1),
                 ],
                 ListTile(
                   leading: const Icon(Icons.attach_file),
-                  title: const Text('Datei anhängen'),
+                  title: Text(context.tr('Datei anhängen')),
                   onTap: () => Navigator.pop(context, _AddAction.file),
                 ),
                 ListTile(
                   leading: const Icon(Icons.image_outlined),
-                  title: const Text('Bild auswählen'),
+                  title: Text(context.tr('Bild auswählen')),
                   onTap: () => Navigator.pop(context, _AddAction.image),
                 ),
                 ListTile(
                   leading: const Icon(Icons.photo_camera_outlined),
-                  title: const Text('Foto aufnehmen'),
+                  title: Text(context.tr('Foto aufnehmen')),
                   onTap: () => Navigator.pop(context, _AddAction.camera),
                 ),
                 ListTile(
                   leading: const Icon(Icons.brush_outlined),
-                  title: const Text('Bild markieren'),
+                  title: Text(context.tr('Bild markieren')),
                   onTap: () => Navigator.pop(context, _AddAction.markImage),
                 ),
                 ListTile(
                   leading: const Icon(Icons.draw_outlined),
-                  title: const Text('Zeichnung / Markierung'),
+                  title: Text(context.tr('Zeichnung / Markierung')),
                   onTap: () => Navigator.pop(context, _AddAction.drawing),
                 ),
                 ListTile(
                   leading: const Icon(Icons.mic_none),
-                  title: const Text('Audio aufnehmen'),
+                  title: Text(context.tr('Audio aufnehmen')),
                   onTap: () => Navigator.pop(context, _AddAction.audio),
                 ),
                 ListTile(
                   leading: const Icon(Icons.location_on_outlined),
-                  title: const Text('Aktuellen Standort hinzufügen'),
-                  onTap: () =>
-                      Navigator.pop(context, _AddAction.location),
+                  title: Text(context.tr('Aktuellen Standort hinzufügen')),
+                  onTap: () => Navigator.pop(context, _AddAction.location),
                 ),
                 ListTile(
                   leading: const Icon(Icons.link),
-                  title: const Text('Verknüpfte Notiz hinzufügen'),
-                  onTap: () =>
-                      Navigator.pop(context, _AddAction.memoReference),
+                  title: Text(context.tr('Verknüpfte Notiz hinzufügen')),
+                  onTap: () => Navigator.pop(context, _AddAction.memoReference),
                 ),
               ],
             ),
@@ -354,10 +350,15 @@ class _NoteScreenState extends State<NoteScreen> {
     }
   }
 
-  Future<void> _showError(String message) async {
+  Future<void> _showError(String source, {Object? error}) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error == null ? context.tr(source) : '${context.tr(source)}: $error',
+        ),
+      ),
+    );
   }
 
   Future<void> _attachFile(String path, String filename, String type) async {
@@ -372,7 +373,7 @@ class _NoteScreenState extends State<NoteScreen> {
         'Anhang hinzugefügt und für die Synchronisierung vorgemerkt',
       );
     } catch (e) {
-      await _showError('Anhang konnte nicht hinzugefügt werden: $e');
+      await _showError('Anhang konnte nicht hinzugefügt werden', error: e);
     }
   }
 
@@ -392,7 +393,7 @@ class _NoteScreenState extends State<NoteScreen> {
         );
       }
     } catch (e) {
-      await _showError('Dateiauswahl fehlgeschlagen: $e');
+      await _showError('Dateiauswahl fehlgeschlagen', error: e);
     }
   }
 
@@ -406,7 +407,7 @@ class _NoteScreenState extends State<NoteScreen> {
         _mimeType(image.name),
       );
     } catch (e) {
-      await _showError('Bild konnte nicht ausgewählt werden: $e');
+      await _showError('Bild konnte nicht ausgewählt werden', error: e);
     }
   }
 
@@ -425,7 +426,7 @@ class _NoteScreenState extends State<NoteScreen> {
         type: 'image/png',
       );
     } catch (e) {
-      await _showError('Zeichnung konnte nicht gespeichert werden: $e');
+      await _showError('Zeichnung konnte nicht gespeichert werden', error: e);
     }
   }
 
@@ -450,12 +451,12 @@ class _NoteScreenState extends State<NoteScreen> {
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Audioaufnahme'),
-          content: const Text('Die Aufnahme läuft.'),
+          title: Text(context.tr('Audioaufnahme')),
+          content: Text(context.tr('Die Aufnahme läuft.')),
           actions: [
             FilledButton.icon(
               icon: const Icon(Icons.stop),
-              label: const Text('Aufnahme beenden'),
+              label: Text(context.tr('Aufnahme beenden')),
               onPressed: () async {
                 final recorded = await recorder.stop();
                 if (dialogContext.mounted) {
@@ -475,7 +476,7 @@ class _NoteScreenState extends State<NoteScreen> {
       }
       if (await directory.exists()) await directory.delete(recursive: true);
     } catch (e) {
-      await _showError('Audioaufnahme fehlgeschlagen: $e');
+      await _showError('Audioaufnahme fehlgeschlagen', error: e);
     } finally {
       await recorder.dispose();
     }
@@ -485,23 +486,26 @@ class _NoteScreenState extends State<NoteScreen> {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Standort hinzufügen?'),
-        content: const Text(
-          'Der aktuelle Standort wird an diese Notiz angehängt und mit dem Memos-Server synchronisiert.',
+        title: Text(context.tr('Standort hinzufügen?')),
+        content: Text(
+          context.tr(
+            'Der aktuelle Standort wird an diese Notiz angehängt und mit dem Memos-Server synchronisiert.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
+            child: Text(context.tr('Abbrechen')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Fortfahren'),
+            child: Text(context.tr('Fortfahren')),
           ),
         ],
       ),
     );
     if (accepted != true || !mounted) return;
+    final currentLocation = context.tr('Aktueller Standort');
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
         await _showError('Bitte aktiviere zuerst den Standortdienst.');
@@ -526,11 +530,11 @@ class _NoteScreenState extends State<NoteScreen> {
         NoteLocation(
           latitude: position.latitude,
           longitude: position.longitude,
-          placeholder: 'Aktueller Standort',
+          placeholder: currentLocation,
         ),
       );
     } catch (e) {
-      await _showError('Standort konnte nicht gelesen werden: $e');
+      await _showError('Standort konnte nicht gelesen werden', error: e);
     }
   }
 
@@ -543,7 +547,7 @@ class _NoteScreenState extends State<NoteScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.folder_off_outlined),
-              title: const Text('Keinem Bereich zuordnen'),
+              title: Text(context.tr('Keinem Bereich zuordnen')),
               onTap: () => Navigator.pop(context, ''),
             ),
             for (final space in s.spaces)
@@ -566,19 +570,19 @@ class _NoteScreenState extends State<NoteScreen> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Notiz in Bereich verschieben?'),
+          title: Text(context.tr('Notiz in Bereich verschieben?')),
           content: Text(
-            'Die Notiz wird für Mitglieder des Bereichs „${space!.title}“ '
-            'sichtbar. Ihre bisherige Sichtbarkeit wird dabei auf „Bereich“ gesetzt.',
+            '${context.tr('Die Notiz wird für Mitglieder des Bereichs')} „${space!.title}“ '
+            '${context.tr('sichtbar. Ihre bisherige Sichtbarkeit wird dabei auf „Bereich“ gesetzt.')}',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Abbrechen'),
+              child: Text(context.tr('Abbrechen')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Verschieben'),
+              child: Text(context.tr('Verschieben')),
             ),
           ],
         ),
@@ -609,7 +613,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _openWithOperatingSystem(file.path, attachment.type);
     } catch (e) {
       _attachmentBytes.remove(attachment.name);
-      await _showError('Anhang konnte nicht geöffnet werden: $e');
+      await _showError('Anhang konnte nicht geöffnet werden', error: e);
     }
   }
 
@@ -617,18 +621,18 @@ class _NoteScreenState extends State<NoteScreen> {
     try {
       await _openWithOperatingSystem(attachment.path, attachment.type);
     } catch (e) {
-      await _showError('Anhang konnte nicht geöffnet werden: $e');
+      await _showError('Anhang konnte nicht geöffnet werden', error: e);
     }
   }
 
   Future<void> _openWithOperatingSystem(String path, String type) async {
     final result = await OpenFilex.open(path, type: type);
     if (!mounted || result.type == ResultType.done) return;
-    await _showError(
-      result.type == ResultType.noAppToOpen
-          ? 'Keine passende App zum Öffnen gefunden.'
-          : 'Öffnen fehlgeschlagen: ${result.message}',
-    );
+    if (result.type == ResultType.noAppToOpen) {
+      await _showError('Keine passende App zum Öffnen gefunden.');
+    } else {
+      await _showError('Öffnen fehlgeschlagen', error: result.message);
+    }
   }
 
   Future<bool> _confirmRemoveAttachment(
@@ -638,19 +642,19 @@ class _NoteScreenState extends State<NoteScreen> {
       await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Anhang entfernen?'),
+          title: Text(context.tr('Anhang entfernen?')),
           content: Text(
-            '„$filename“ wird aus dieser Notiz entfernt. '
-            '${local ? 'Die lokale Datei wird gelöscht.' : 'Die Datei wird dadurch nicht global vom Server gelöscht.'}',
+            '„$filename“ ${context.tr('wird aus dieser Notiz entfernt.')} '
+            '${context.tr(local ? 'Die lokale Datei wird gelöscht.' : 'Die Datei wird dadurch nicht global vom Server gelöscht.')}',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Abbrechen'),
+              child: Text(context.tr('Abbrechen')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Entfernen'),
+              child: Text(context.tr('Entfernen')),
             ),
           ],
         ),
@@ -658,10 +662,7 @@ class _NoteScreenState extends State<NoteScreen> {
       false;
 
   Future<void> _removeAttachment(NoteAttachment attachment) async {
-    if (!await _confirmRemoveAttachment(
-          attachment.filename,
-          local: false,
-        ) ||
+    if (!await _confirmRemoveAttachment(attachment.filename, local: false) ||
         !mounted) {
       return;
     }
@@ -669,15 +670,12 @@ class _NoteScreenState extends State<NoteScreen> {
       await s.removeAttachment(widget.note, attachment);
       _attachmentBytes.remove(attachment.name);
     } catch (e) {
-      await _showError('Anhang konnte nicht entfernt werden: $e');
+      await _showError('Anhang konnte nicht entfernt werden', error: e);
     }
   }
 
   Future<void> _removePendingAttachment(PendingAttachment attachment) async {
-    if (!await _confirmRemoveAttachment(
-          attachment.filename,
-          local: true,
-        ) ||
+    if (!await _confirmRemoveAttachment(attachment.filename, local: true) ||
         !mounted) {
       return;
     }
@@ -687,7 +685,7 @@ class _NoteScreenState extends State<NoteScreen> {
         _attachmentBytes.remove(name);
       }
     } catch (e) {
-      await _showError('Anhang konnte nicht entfernt werden: $e');
+      await _showError('Anhang konnte nicht entfernt werden', error: e);
     }
   }
 
@@ -695,7 +693,7 @@ class _NoteScreenState extends State<NoteScreen> {
     try {
       await s.removeLocation(widget.note);
     } catch (e) {
-      await _showError('Standort konnte nicht entfernt werden: $e');
+      await _showError('Standort konnte nicht entfernt werden', error: e);
     }
   }
 
@@ -721,7 +719,7 @@ class _NoteScreenState extends State<NoteScreen> {
     try {
       await s.addMemoReference(widget.note, relatedNote);
     } catch (e) {
-      await _showError('Verknüpfung konnte nicht hinzugefügt werden: $e');
+      await _showError('Verknüpfung konnte nicht hinzugefügt werden', error: e);
     }
   }
 
@@ -740,19 +738,19 @@ class _NoteScreenState extends State<NoteScreen> {
       final title =
           linkedNote?.title ??
           relation.otherMemoSnippet(widget.note.id) ??
-          'Memo $id';
+          '${context.tr('Memo')} $id';
       return ListTile(
         dense: compact,
         leading: const Icon(Icons.sticky_note_2_outlined),
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: linkedNote == null ? Text('Memo $id') : null,
+        subtitle: linkedNote == null ? Text('${context.tr('Memo')} $id') : null,
         onTap: linkedNote == null
             ? null
             : () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => NoteScreen(note: linkedNote)),
               ),
         trailing: IconButton(
-          tooltip: 'Verknüpfung entfernen',
+          tooltip: context.tr('Verknüpfung entfernen'),
           icon: const Icon(Icons.link_off),
           onPressed: widget.note.busy
               ? null
@@ -761,7 +759,8 @@ class _NoteScreenState extends State<NoteScreen> {
                     await s.removeMemoReference(relation);
                   } catch (e) {
                     await _showError(
-                      'Verknüpfung konnte nicht entfernt werden: $e',
+                      'Verknüpfung konnte nicht entfernt werden',
+                      error: e,
                     );
                   }
                 },
@@ -810,10 +809,12 @@ class _NoteScreenState extends State<NoteScreen> {
                     const Icon(Icons.broken_image_outlined),
                     const SizedBox(width: 8),
                     Flexible(
-                      child: Text('Bild konnte nicht geladen werden: ${snapshot.error}'),
+                      child: Text(
+                        '${context.tr('Bild konnte nicht geladen werden')}: ${snapshot.error}',
+                      ),
                     ),
                     IconButton(
-                      tooltip: 'Erneut laden',
+                      tooltip: context.tr('Erneut laden'),
                       onPressed: () {
                         _attachmentBytes.remove(attachment.name);
                         setState(() {});
@@ -830,9 +831,8 @@ class _NoteScreenState extends State<NoteScreen> {
                 snapshot.data!,
                 cacheWidth: 1200,
                 fit: BoxFit.contain,
-                errorBuilder: (_, error, _) => const Center(
-                  child: Icon(Icons.broken_image_outlined),
-                ),
+                errorBuilder: (_, error, _) =>
+                    const Center(child: Icon(Icons.broken_image_outlined)),
               );
             },
           ),
@@ -850,9 +850,8 @@ class _NoteScreenState extends State<NoteScreen> {
         File(attachment.path),
         cacheWidth: 1200,
         fit: BoxFit.contain,
-        errorBuilder: (_, error, _) => const Center(
-          child: Icon(Icons.broken_image_outlined),
-        ),
+        errorBuilder: (_, error, _) =>
+            const Center(child: Icon(Icons.broken_image_outlined)),
       ),
     ),
   );
@@ -866,9 +865,11 @@ class _NoteScreenState extends State<NoteScreen> {
           : Icons.insert_drive_file_outlined,
     ),
     title: Text(attachment.filename),
-    subtitle: Text('${attachment.type} · ${_formatSize(attachment.size)}'),
+    subtitle: Text(
+      '${context.tr('Typ')}: ${attachment.type} · ${_formatSize(attachment.size)}',
+    ),
     trailing: IconButton(
-      tooltip: 'Anhang entfernen',
+      tooltip: context.tr('Anhang entfernen'),
       icon: const Icon(Icons.delete_outline),
       onPressed: widget.note.busy ? null : () => _removeAttachment(attachment),
     ),
@@ -891,40 +892,40 @@ class _NoteScreenState extends State<NoteScreen> {
             _attachmentTile(attachment),
           ] else
             _attachmentTile(attachment),
-        for (final pending in note.pendingAttachments)
-          ...[
-            if (pending.type.startsWith('image/'))
-              _pendingImagePreview(pending),
-            ListTile(
-              leading: const Icon(Icons.cloud_upload_outlined),
-              title: Text(pending.filename),
-              subtitle: Text(
-                pending.uploadedName == null
-                    ? 'Wird synchronisiert'
-                    : 'Hochgeladen, Verknüpfung ausstehend',
-              ),
-              trailing: IconButton(
-                tooltip: 'Anhang entfernen',
-                icon: const Icon(Icons.delete_outline),
-                onPressed: note.busy
-                    ? null
-                    : () => _removePendingAttachment(pending),
-              ),
-              onTap: note.busy ? null : () => _openPendingAttachment(pending),
+        for (final pending in note.pendingAttachments) ...[
+          if (pending.type.startsWith('image/')) _pendingImagePreview(pending),
+          ListTile(
+            leading: const Icon(Icons.cloud_upload_outlined),
+            title: Text(pending.filename),
+            subtitle: Text(
+              pending.uploadedName == null
+                  ? context.tr('Wird synchronisiert')
+                  : context.tr('Hochgeladen, Verknüpfung ausstehend'),
             ),
-          ],
+            trailing: IconButton(
+              tooltip: context.tr('Anhang entfernen'),
+              icon: const Icon(Icons.delete_outline),
+              onPressed: note.busy
+                  ? null
+                  : () => _removePendingAttachment(pending),
+            ),
+            onTap: note.busy ? null : () => _openPendingAttachment(pending),
+          ),
+        ],
         if (note.location case final location?)
           ListTile(
             leading: const Icon(Icons.location_on_outlined),
             title: Text(
-              location.placeholder.isEmpty ? 'Standort' : location.placeholder,
+              location.placeholder.isEmpty
+                  ? context.tr('Standort')
+                  : location.placeholder,
             ),
             subtitle: Text(
               '${location.latitude.toStringAsFixed(5)}, '
               '${location.longitude.toStringAsFixed(5)}',
             ),
             trailing: IconButton(
-              tooltip: 'Standort entfernen',
+              tooltip: context.tr('Standort entfernen'),
               icon: const Icon(Icons.delete_outline),
               onPressed: note.busy ? null : _removeLocation,
             ),
@@ -988,10 +989,10 @@ class _NoteScreenState extends State<NoteScreen> {
 
   Widget _toolbar(bool assistedEditingEnabled) {
     Widget b(IconData i, String tip, VoidCallback f) =>
-        IconButton(icon: Icon(i), tooltip: tip, onPressed: f);
+        IconButton(icon: Icon(i), tooltip: context.tr(tip), onPressed: f);
     Widget h(String label, String tip, VoidCallback f, {bool bold = true}) =>
         Tooltip(
-          message: tip,
+          message: context.tr(tip),
           child: TextButton(
             style: TextButton.styleFrom(
               minimumSize: const Size(44, 44),
@@ -999,7 +1000,7 @@ class _NoteScreenState extends State<NoteScreen> {
             ),
             onPressed: f,
             child: Text(
-              label,
+              context.tr(label),
               style: TextStyle(
                 fontWeight: bold ? FontWeight.bold : FontWeight.normal,
               ),
@@ -1014,7 +1015,7 @@ class _NoteScreenState extends State<NoteScreen> {
             valueListenable: _undo,
             builder: (_, v, _) => IconButton(
               icon: const Icon(Icons.undo),
-              tooltip: 'Rückgängig',
+              tooltip: context.tr('Rückgängig'),
               onPressed: v.canUndo ? _undo.undo : null,
             ),
           ),
@@ -1024,7 +1025,11 @@ class _NoteScreenState extends State<NoteScreen> {
           b(Icons.format_bold, 'Fett', () => _wrap('**', '**')),
           b(Icons.format_italic, 'Kursiv', () => _wrap('*', '*')),
           if (assistedEditingEnabled)
-            b(Icons.format_list_bulleted, 'Aufzählung', () => _linePrefix('- ')),
+            b(
+              Icons.format_list_bulleted,
+              'Aufzählung',
+              () => _linePrefix('- '),
+            ),
           if (assistedEditingEnabled)
             b(
               Icons.format_list_numbered,
@@ -1032,11 +1037,7 @@ class _NoteScreenState extends State<NoteScreen> {
               () => _linePrefix('1. '),
             ),
           if (assistedEditingEnabled)
-            b(
-              Icons.check_box_outlined,
-              'Aufgabe',
-              () => _linePrefix('- [ ] '),
-            ),
+            b(Icons.check_box_outlined, 'Aufgabe', () => _linePrefix('- [ ] ')),
           b(Icons.link, 'Link', () => _wrap('[', '](https://)')),
           b(Icons.code, 'Code', () => _wrap('`', '`')),
           b(Icons.format_quote, 'Zitat', () => _linePrefix('> ')),
@@ -1090,9 +1091,9 @@ class _NoteScreenState extends State<NoteScreen> {
               textAlignVertical: TextAlignVertical.top,
               onChanged: (_) => _schedule(),
               style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
-                hintText: 'Notiz schreiben …',
+                hintText: context.tr('Notiz schreiben …'),
               ),
             ),
           ),
@@ -1108,11 +1109,11 @@ class _NoteScreenState extends State<NoteScreen> {
     final blockMarkdownImages = app.blockMarkdownImages;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.note.isLocal ? 'Neue Notiz' : 'Notiz'),
+        title: Text(context.tr(widget.note.isLocal ? 'Neue Notiz' : 'Notiz')),
         actions: [
           PopupMenuButton<String>(
             tooltip:
-                'Sichtbarkeit: ${_visibilityLabel(widget.note.visibility)}',
+                '${context.tr('Sichtbarkeit')}: ${_visibilityLabel(context, widget.note.visibility)}',
             icon: Icon(_visibilityIcon(widget.note.visibility)),
             onSelected: (visibility) async {
               await s.setVisibility(widget.note, visibility);
@@ -1121,6 +1122,7 @@ class _NoteScreenState extends State<NoteScreen> {
               PopupMenuItem(
                 value: 'PUBLIC',
                 child: _menuLabel(
+                  context,
                   Icons.public_outlined,
                   'Öffentlich',
                   style: widget.note.visibility == 'PUBLIC'
@@ -1131,6 +1133,7 @@ class _NoteScreenState extends State<NoteScreen> {
               PopupMenuItem(
                 value: 'PRIVATE',
                 child: _menuLabel(
+                  context,
                   Icons.lock_outline,
                   'Privat',
                   style: widget.note.visibility == 'PRIVATE'
@@ -1141,6 +1144,7 @@ class _NoteScreenState extends State<NoteScreen> {
               PopupMenuItem(
                 value: 'PROTECTED',
                 child: _menuLabel(
+                  context,
                   Icons.group_outlined,
                   'Für Mitglieder',
                   style: widget.note.visibility == 'PROTECTED'
@@ -1152,6 +1156,7 @@ class _NoteScreenState extends State<NoteScreen> {
                 PopupMenuItem(
                   value: 'SPACE',
                   child: _menuLabel(
+                    context,
                     Icons.folder_shared_outlined,
                     'Für Bereichsmitglieder',
                     style: widget.note.visibility == 'SPACE'
@@ -1167,7 +1172,7 @@ class _NoteScreenState extends State<NoteScreen> {
                   ? Icons.widgets
                   : Icons.widgets_outlined,
             ),
-            tooltip: 'Im Widget anzeigen',
+            tooltip: context.tr('Im Widget anzeigen'),
             onPressed: () async {
               await s.toggleWidget(widget.note);
               setState(() {});
@@ -1190,6 +1195,7 @@ class _NoteScreenState extends State<NoteScreen> {
               PopupMenuItem(
                 value: 'pin',
                 child: _menuLabel(
+                  context,
                   Icons.push_pin_outlined,
                   widget.note.pinned ? 'Lösen' : 'Anpinnen',
                 ),
@@ -1197,12 +1203,17 @@ class _NoteScreenState extends State<NoteScreen> {
               if (widget.note.state == NoteState.normal)
                 PopupMenuItem(
                   value: 'archive',
-                  child: _menuLabel(Icons.archive_outlined, 'Archivieren'),
+                  child: _menuLabel(
+                    context,
+                    Icons.archive_outlined,
+                    'Archivieren',
+                  ),
                 )
               else
                 PopupMenuItem(
                   value: 'restore',
                   child: _menuLabel(
+                    context,
                     Icons.unarchive_outlined,
                     'Wiederherstellen',
                   ),
@@ -1211,6 +1222,7 @@ class _NoteScreenState extends State<NoteScreen> {
                 PopupMenuItem(
                   value: 'space',
                   child: _menuLabel(
+                    context,
                     Icons.folder_open_outlined,
                     'Bereich zuordnen',
                   ),
@@ -1225,16 +1237,16 @@ class _NoteScreenState extends State<NoteScreen> {
             padding: const EdgeInsets.all(8),
             child: SegmentedButton<int>(
               showSelectedIcon: false,
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: 0,
                   icon: Icon(Icons.checklist),
-                  label: Text('Ansicht'),
+                  label: Text(context.tr('Ansicht')),
                 ),
                 ButtonSegment(
                   value: 1,
                   icon: Icon(Icons.edit),
-                  label: Text('Editor'),
+                  label: Text(context.tr('Editor')),
                 ),
               ],
               selected: {mode},
@@ -1247,7 +1259,7 @@ class _NoteScreenState extends State<NoteScreen> {
       floatingActionButton: mode == 0
           ? FloatingActionButton(
               onPressed: _showAddMenu,
-              tooltip: 'Eintrag oder Anhang hinzufügen',
+              tooltip: context.tr('Eintrag oder Anhang hinzufügen'),
               child: const Icon(Icons.add),
             )
           : null,
@@ -1281,7 +1293,7 @@ class _MemoSearchDialogState extends State<_MemoSearchDialog> {
     final results = filterNotesByQuery(candidates, _query);
 
     return AlertDialog(
-      title: const Text('Notiz verknüpfen'),
+      title: Text(context.tr('Notiz verknüpfen')),
       content: SizedBox(
         width: 420,
         height: 420,
@@ -1290,8 +1302,8 @@ class _MemoSearchDialogState extends State<_MemoSearchDialog> {
             TextField(
               autofocus: true,
               onChanged: (value) => setState(() => _query = value),
-              decoration: const InputDecoration(
-                hintText: 'Notizen suchen',
+              decoration: InputDecoration(
+                hintText: context.tr('Notizen suchen'),
                 prefixIcon: Icon(Icons.search),
               ),
             ),
@@ -1301,8 +1313,8 @@ class _MemoSearchDialogState extends State<_MemoSearchDialog> {
                   ? Center(
                       child: Text(
                         _query.trim().isEmpty
-                            ? 'Keine Notizen verfügbar'
-                            : 'Keine passenden Notizen',
+                            ? context.tr('Keine Notizen verfügbar')
+                            : context.tr('Keine passenden Notizen'),
                       ),
                     )
                   : ListView.builder(
@@ -1333,7 +1345,7 @@ class _MemoSearchDialogState extends State<_MemoSearchDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Abbrechen'),
+          child: Text(context.tr('Abbrechen')),
         ),
       ],
     );
@@ -1370,7 +1382,9 @@ class _DrawingDialogState extends State<_DrawingDialog> {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Zeichnung konnte nicht exportiert werden: $e'),
+            content: Text(
+              '${context.tr('Zeichnung konnte nicht exportiert werden')}: $e',
+            ),
           ),
         );
       }
@@ -1379,7 +1393,7 @@ class _DrawingDialogState extends State<_DrawingDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Zeichnung / Markierung'),
+    title: Text(context.tr('Zeichnung / Markierung')),
     content: SizedBox(
       width: 360,
       height: 360,
@@ -1411,15 +1425,15 @@ class _DrawingDialogState extends State<_DrawingDialog> {
     actions: [
       TextButton(
         onPressed: _saving ? null : () => setState(_points.clear),
-        child: const Text('Leeren'),
+        child: Text(context.tr('Leeren')),
       ),
       TextButton(
         onPressed: _saving ? null : () => Navigator.pop(context),
-        child: const Text('Abbrechen'),
+        child: Text(context.tr('Abbrechen')),
       ),
       FilledButton(
         onPressed: _saving ? null : _save,
-        child: Text(_saving ? 'Speichere …' : 'Anhängen'),
+        child: Text(context.tr(_saving ? 'Speichere …' : 'Anhängen')),
       ),
     ],
   );

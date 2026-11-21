@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../locales/app_localizations.dart';
 import '../services/log.dart';
 import '../state/app_state.dart';
 import '../widgets/app_version_text.dart';
@@ -71,16 +72,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _save() async {
     final s = context.read<AppState>();
     final msg = ScaffoldMessenger.of(context);
+    final savedMessage = context.tr('Verbunden & gespeichert');
+    final errorPrefix = context.tr('Fehler');
     setState(() => busy = true);
     try {
       final u = _withScheme(url.text);
       await s.testConnection(u, token.text);
       await s.saveSettings(u, token.text);
-      msg.showSnackBar(
-        const SnackBar(content: Text('Verbunden & gespeichert')),
-      );
+      if (!context.mounted) return;
+      msg.showSnackBar(SnackBar(content: Text(savedMessage)));
     } catch (e) {
-      msg.showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      if (!mounted) return;
+      msg.showSnackBar(SnackBar(content: Text('$errorPrefix: $e')));
     }
     if (mounted) setState(() => busy = false);
   }
@@ -91,19 +94,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Zugangsdaten löschen?'),
-        content: const Text(
-          'Server-URL und Token werden von diesem Gerät entfernt. '
-          'Lokal gespeicherte Notizen bleiben erhalten, werden aber nicht mehr synchronisiert.',
+        title: Text(context.tr('Zugangsdaten löschen?')),
+        content: Text(
+          context.tr(
+            'Server-URL und Token werden von diesem Gerät entfernt. Lokal gespeicherte Notizen bleiben erhalten, werden aber nicht mehr synchronisiert.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
+            child: Text(context.tr('Abbrechen')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
+            child: Text(context.tr('Löschen')),
           ),
         ],
       ),
@@ -115,7 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     url.text = 'https://';
     token.clear();
     msg.showSnackBar(
-      const SnackBar(content: Text('Server-URL und Token gelöscht')),
+      SnackBar(content: Text(context.tr('Server-URL und Token gelöscht'))),
     );
   }
 
@@ -124,18 +128,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Logdatei löschen?'),
-        content: const Text(
-          'Das gespeicherte Diagnoseprotokoll wird gelöscht.',
+        title: Text(context.tr('Logdatei löschen?')),
+        content: Text(
+          context.tr('Das gespeicherte Diagnoseprotokoll wird gelöscht.'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
+            child: Text(context.tr('Abbrechen')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
+            child: Text(context.tr('Löschen')),
           ),
         ],
       ),
@@ -145,16 +149,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await LogService.clear();
       if (mounted) {
-        msg.showSnackBar(const SnackBar(content: Text('Logdatei gelöscht')));
+        msg.showSnackBar(
+          SnackBar(content: Text(context.tr('Logdatei gelöscht'))),
+        );
       }
     } catch (e) {
       if (mounted) {
         msg.showSnackBar(
-          SnackBar(content: Text('Logdatei konnte nicht gelöscht werden: $e')),
+          SnackBar(
+            content: Text(
+              '${context.tr('Logdatei konnte nicht gelöscht werden')}: $e',
+            ),
+          ),
         );
       }
     } finally {
       if (mounted) setState(() => clearingLog = false);
+    }
+  }
+
+  Future<void> _setLanguage(String code) async {
+    try {
+      await context.read<AppState>().setLanguage(code);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${context.tr('Sprache konnte nicht gespeichert werden')}: $e',
+          ),
+        ),
+      );
     }
   }
 
@@ -163,15 +188,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final s = context.watch<AppState>();
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Einstellungen')),
+      appBar: AppBar(title: Text(context.tr('Einstellungen'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const _SectionHeader(
-            title: 'Synchronisation',
+          _SectionHeader(
+            title: context.tr('Synchronisation'),
             icon: Icons.cloud_sync_outlined,
           ),
-          const _SubsectionHeader(title: 'Verbindung', icon: Icons.dns_outlined),
+          _SubsectionHeader(
+            title: context.tr('Verbindung'),
+            icon: Icons.dns_outlined,
+          ),
           Card(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,11 +209,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     https ? Icons.lock_outline : Icons.lock_open_outlined,
                     color: https ? null : scheme.error,
                   ),
-                  title: const Text('HTTPS verwenden'),
+                  title: Text(context.tr('HTTPS verwenden')),
                   subtitle: Text(
                     https
-                        ? 'Verschlüsselte Verbindung (empfohlen)'
-                        : 'Unverschlüsselt (HTTP)',
+                        ? context.tr('Verschlüsselte Verbindung (empfohlen)')
+                        : context.tr('Unverschlüsselt (HTTP)'),
                   ),
                   value: https,
                   onChanged: _setHttps,
@@ -204,8 +232,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Token und Notizen werden im Klartext übertragen und können mitgelesen werden. '
-                            'Nur in vertrauenswürdigen Netzwerken (z. B. Heimnetz) verwenden.',
+                            context.tr(
+                              'Token und Notizen werden im Klartext übertragen und können mitgelesen werden. Nur in vertrauenswürdigen Netzwerken (z. B. Heimnetz) verwenden.',
+                            ),
                             style: TextStyle(fontSize: 12, color: scheme.error),
                           ),
                         ),
@@ -222,10 +251,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         keyboardType: TextInputType.url,
                         autocorrect: false,
                         enableSuggestions: false,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.link),
-                          labelText: 'Server-URL',
+                          labelText: context.tr('Server-URL'),
                           hintText: 'https://memos.example.com',
                         ),
                       ),
@@ -235,11 +264,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         obscureText: true,
                         enableSuggestions: false,
                         autocorrect: false,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.key_outlined),
                           labelText: 'Access Token',
-                          helperText: 'Memos → Settings → My Account',
+                          helperText: context.tr(
+                            'Memos → Settings → My Account',
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -247,7 +278,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         width: double.infinity,
                         child: FilledButton.icon(
                           icon: const Icon(Icons.check_circle_outline),
-                          label: Text(busy ? 'Prüfe …' : 'Testen & speichern'),
+                          label: Text(
+                            busy
+                                ? context.tr('Prüfe …')
+                                : context.tr('Testen & speichern'),
+                          ),
                           onPressed: busy ? null : _save,
                         ),
                       ),
@@ -258,22 +293,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const _SubsectionHeader(
-            title: 'Zugangsdaten',
+          _SubsectionHeader(
+            title: context.tr('Zugangsdaten'),
             icon: Icons.vpn_key_outlined,
           ),
           Card(
             child: ListTile(
               enabled: !busy,
               leading: Icon(Icons.delete_outline, color: scheme.error),
-              title: const Text('Server-URL & Token löschen'),
-              subtitle: const Text('Lokale Notizen bleiben erhalten'),
+              title: Text(context.tr('Server-URL & Token löschen')),
+              subtitle: Text(context.tr('Lokale Notizen bleiben erhalten')),
               onTap: busy ? null : _clear,
             ),
           ),
           const SizedBox(height: 16),
-          const _SectionHeader(
-            title: 'Darstellung',
+          _SectionHeader(
+            title: context.tr('Darstellung'),
             icon: Icons.palette_outlined,
           ),
           Card(
@@ -282,21 +317,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (mode) {
                 if (mode != null) s.setTheme(mode);
               },
-              child: const Column(
+              child: Column(
                 children: [
                   RadioListTile<ThemeMode>(
                     secondary: Icon(Icons.light_mode_outlined),
-                    title: Text('Hell'),
+                    title: Text(context.tr('Hell')),
                     value: ThemeMode.light,
                   ),
                   RadioListTile<ThemeMode>(
                     secondary: Icon(Icons.dark_mode_outlined),
-                    title: Text('Dunkel'),
+                    title: Text(context.tr('Dunkel')),
                     value: ThemeMode.dark,
                   ),
                   RadioListTile<ThemeMode>(
                     secondary: Icon(Icons.settings_brightness_outlined),
-                    title: Text('Wie Systemeinstellung'),
+                    title: Text(context.tr('Wie Systemeinstellung')),
                     value: ThemeMode.system,
                   ),
                 ],
@@ -304,41 +339,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const _SectionHeader(
-            title: 'Bearbeitung',
+          _SectionHeader(
+            title: context.tr('Sprache'),
+            icon: Icons.language_outlined,
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: DropdownButtonFormField<String>(
+                initialValue: s.languageCode,
+                decoration: InputDecoration(
+                  labelText: context.tr('Sprache'),
+                  border: InputBorder.none,
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'system',
+                    child: Text(context.tr('Wie Systemeinstellung')),
+                  ),
+                  for (final language in appLanguages)
+                    DropdownMenuItem(
+                      value: language.code,
+                      child: Text(language.name),
+                    ),
+                ],
+                onChanged: (code) {
+                  if (code != null) _setLanguage(code);
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionHeader(
+            title: context.tr('Bearbeitung'),
             icon: Icons.edit_note_outlined,
           ),
           Card(
             child: SwitchListTile(
               secondary: const Icon(Icons.playlist_add_check_outlined),
-              title: const Text('Unterstützte Bearbeitung'),
-              subtitle: const Text(
-                'Erledigte Aufgaben ausblenden sowie Listen direkt bearbeiten, '
-                'ergänzen und verschieben',
+              title: Text(context.tr('Unterstützte Bearbeitung')),
+              subtitle: Text(
+                context.tr(
+                  'Erledigte Aufgaben ausblenden sowie Listen direkt bearbeiten, ergänzen und verschieben',
+                ),
               ),
               value: s.assistedEditingEnabled,
               onChanged: s.setAssistedEditingEnabled,
             ),
           ),
           const SizedBox(height: 16),
-          const _SectionHeader(
-            title: 'Datenschutz',
+          _SectionHeader(
+            title: context.tr('Datenschutz'),
             icon: Icons.privacy_tip_outlined,
           ),
           Card(
             child: SwitchListTile(
               secondary: const Icon(Icons.hide_image_outlined),
-              title: const Text('Markdown-Bilder blockieren'),
-              subtitle: const Text(
-                'Verhindert, dass eingebettete Bilder automatisch geladen werden',
+              title: Text(context.tr('Markdown-Bilder blockieren')),
+              subtitle: Text(
+                context.tr(
+                  'Verhindert, dass eingebettete Bilder automatisch geladen werden',
+                ),
               ),
               value: s.blockMarkdownImages,
               onChanged: s.setBlockMarkdownImages,
             ),
           ),
           const SizedBox(height: 16),
-          const _SectionHeader(
-            title: 'Diagnose',
+          _SectionHeader(
+            title: context.tr('Diagnose'),
             icon: Icons.bug_report_outlined,
           ),
           Card(
@@ -346,9 +415,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 SwitchListTile(
                   secondary: const Icon(Icons.description_outlined),
-                  title: const Text('Logging aktivieren'),
-                  subtitle: const Text(
-                    'Schreibt Sync- und Fehlerprotokolle (max. 5 MB, nur in der App gespeichert)',
+                  title: Text(context.tr('Logging aktivieren')),
+                  subtitle: Text(
+                    context.tr(
+                      'Schreibt Sync- und Fehlerprotokolle (max. 5 MB, nur in der App gespeichert)',
+                    ),
                   ),
                   value: s.logEnabled,
                   onChanged: s.setLogEnabled,
@@ -356,15 +427,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.share, color: Colors.deepPurple),
-                  title: const Text('Log teilen'),
-                  subtitle: const Text('Vorhandene Logdatei teilen'),
+                  title: Text(context.tr('Log teilen')),
+                  subtitle: Text(context.tr('Vorhandene Logdatei teilen')),
                   onTap: () async {
                     final msg = ScaffoldMessenger.of(context);
                     final ok = await LogService.share();
+                    if (!context.mounted) return;
                     if (!ok) {
                       msg.showSnackBar(
-                        const SnackBar(
-                          content: Text('Noch keine Logs vorhanden'),
+                        SnackBar(
+                          content: Text(
+                            context.tr('Noch keine Logs vorhanden'),
+                          ),
                         ),
                       );
                     }
@@ -374,9 +448,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ListTile(
                   enabled: !clearingLog,
                   leading: Icon(Icons.delete_outline, color: scheme.error),
-                  title: const Text('Logdatei löschen'),
-                  subtitle: const Text(
-                    'Gespeichertes Diagnoseprotokoll entfernen',
+                  title: Text(context.tr('Logdatei löschen')),
+                  subtitle: Text(
+                    context.tr('Gespeichertes Diagnoseprotokoll entfernen'),
                   ),
                   onTap: clearingLog ? null : _clearLog,
                 ),
@@ -384,7 +458,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const _SectionHeader(title: 'Info', icon: Icons.info_outline),
+          _SectionHeader(title: context.tr('Info'), icon: Icons.info_outline),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -392,13 +466,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Meine Notizen',
+                    context.tr('Meine Notizen'),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 4),
                   const AppVersionText(),
                   const SizedBox(height: 4),
-                  const Text('Notizen erfassen – optional mit Memos synchronisiert.'),
+                  Text(
+                    context.tr(
+                      'Notizen erfassen – optional mit Memos synchronisiert.',
+                    ),
+                  ),
                 ],
               ),
             ),

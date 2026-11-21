@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../locales/app_localizations.dart';
+
 class AppVersionText extends StatelessWidget {
   final bool showBuild;
   final String prefix;
@@ -17,13 +19,16 @@ class AppVersionText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectivePrefix = prefix == 'Version '
+        ? '${context.tr('Version')} '
+        : prefix;
     return FutureBuilder<PackageInfo>(
       future: _info,
       builder: (context, snap) {
         final i = snap.data;
         final text = i == null
-            ? '$prefix…'
-            : '$prefix${i.version}${showBuild ? ' (${i.buildNumber})' : ''}';
+            ? '$effectivePrefix…'
+            : '$effectivePrefix${i.version}${showBuild ? ' (${i.buildNumber})' : ''}';
         return Text(text, style: style);
       },
     );
