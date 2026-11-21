@@ -32,6 +32,22 @@
 	<string>Die Fotomediathek wird nur verwendet, wenn du ein Bild zu einer Notiz auswählst.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Der Standort wird nur nach deiner Auswahl einer Notiz hinzugefügt.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.github.homehoster.meine_notizen</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>notizapp</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

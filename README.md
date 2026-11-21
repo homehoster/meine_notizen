@@ -106,7 +106,7 @@ Der gesamte Code ist in **[Flutter](https://flutter.dev)** (Programmiersprache *
 | Lokale Speicherung | JSON-Datei (`path_provider`) + [shared_preferences](https://pub.dev/packages/shared_preferences) für Einstellungen |
 | Token-Speicher | [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) (Keystore / Keychain) |
 | Server-Anbindung | [http](https://pub.dev/packages/http) → [Memos-API](https://usememos.com/docs/api/latest) |
-| Markdown-Anzeige | [flutter_markdown](https://pub.dev/packages/flutter_markdown), Links über [url_launcher](https://pub.dev/packages/url_launcher) |
+| Markdown-Anzeige | [flutter_markdown_plus](https://pub.dev/packages/flutter_markdown_plus), Links über [url_launcher](https://pub.dev/packages/url_launcher) |
 | Homescreen-Widget | [home_widget](https://pub.dev/packages/home_widget) + natives Android-Widget (Kotlin) |
 | Log teilen | [share_plus](https://pub.dev/packages/share_plus) |
 

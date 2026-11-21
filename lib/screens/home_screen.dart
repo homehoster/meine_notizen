@@ -10,6 +10,7 @@ import '../models/note.dart';
 import '../models/saved_view.dart';
 import '../models/space.dart';
 import '../models/task_doc.dart';
+import '../services/api.dart';
 import '../state/app_state.dart';
 import '../widgets/markdown_image_blocker.dart';
 import '../widgets/app_version_text.dart';
@@ -44,9 +45,18 @@ String _visibilityLabel(String visibility) => switch (visibility) {
 };
 
 Future<void> _shareNote(BuildContext context, AppState state, Note note) async {
-  final uri = Uri.parse(
-    '${state.baseUrl}memos/${Uri.encodeComponent(note.id)}',
-  );
+  final String base;
+  try {
+    base = MemosApi.normalizeBaseUrl(state.baseUrl);
+  } on FormatException {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Keine gültige Server-URL eingerichtet'),
+      ),
+    );
+    return;
+  }
+  final uri = Uri.parse('$base/memos/${Uri.encodeComponent(note.id)}');
   try {
     await SharePlus.instance.share(
       ShareParams(text: uri.toString(), subject: note.title),
@@ -788,7 +798,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             )
           else
-            IconButton(icon: const Icon(Icons.sync), onPressed: s.sync),
+            IconButton(
+              icon: const Icon(Icons.sync),
+              tooltip: 'Vollständig synchronisieren',
+              onPressed: () => s.sync(full: true),
+            ),
         ],
       ),
       drawer: Drawer(child: _buildDrawer(context, s)),
@@ -804,12 +818,24 @@ class _HomeScreenState extends State<HomeScreen> {
           if (s.error != null)
             MaterialBanner(
               content: Text(
-                'Sync-Fehler: ${s.error}',
+                s.authFailed
+                    ? 'Anmeldung fehlgeschlagen: Das Token ist ungültig oder abgelaufen.'
+                    : 'Sync-Fehler: ${s.error}',
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
               actions: [
-                TextButton(onPressed: s.sync, child: const Text('Erneut')),
+                if (s.authFailed)
+                  TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SettingsScreen(),
+                      ),
+                    ),
+                    child: const Text('Einstellungen'),
+                  )
+                else
+                  TextButton(onPressed: s.sync, child: const Text('Erneut')),
               ],
             ),
           if (_isSearchOpen)
@@ -851,7 +877,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   )
                 : RefreshIndicator(
-                    onRefresh: s.sync,
+                    onRefresh: () => s.sync(full: true),
                     child: ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.only(top: 6, bottom: 96),
@@ -1000,6 +1026,56 @@ class _HomeScreenState extends State<HomeScreen> {
 final _headingRe = RegExp(r'^\s*#{1,6}\s+(.*)$');
 final _doneLineRe = RegExp(r'^\s*[-*] \[[xX]\]');
 
+class _PreviewData {
+  final String content;
+  final String? heading;
+  final List<String> rest;
+  final List<String> shown;
+  final List<Segment> segments;
+  const _PreviewData(
+    this.content,
+    this.heading,
+    this.rest,
+    this.shown,
+    this.segments,
+  );
+}
+
+/// Vorschau wird nur neu berechnet, wenn sich der Inhalt der Notiz ändert.
+final _previewCache = Expando<_PreviewData>('notePreview');
+
+_PreviewData _previewFor(Note note) {
+  final cached = _previewCache[note];
+  if (cached != null && cached.content == note.content) return cached;
+  final lines = note.content.split('\n');
+  var i = lines.indexWhere((l) => l.trim().isNotEmpty);
+  String? heading;
+  if (i >= 0) {
+    final m = _headingRe.firstMatch(lines[i]);
+    if (m != null) {
+      final h = m.group(1)!.trim();
+      heading = h.isEmpty ? null : h;
+      i++;
+    }
+  }
+  final rest = i < 0
+      ? <String>[]
+      : lines
+            .skip(i)
+            .where((l) => l.trim().isNotEmpty && !_doneLineRe.hasMatch(l))
+            .toList();
+  final shown = rest.take(5).toList();
+  final data = _PreviewData(
+    note.content,
+    heading,
+    rest,
+    shown,
+    parseDoc(shown.join('\n')),
+  );
+  _previewCache[note] = data;
+  return data;
+}
+
 /// Kompakte, schreibgeschützte Version des Ansichtsmodus:
 /// Überschrift (falls die Notiz mit einer beginnt) + max. 5 Zeilen,
 /// sonst die ersten 5 Zeilen. Erledigte Einträge sind wie in der Ansicht ausgeblendet.
@@ -1012,24 +1088,10 @@ class _NotePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final lines = note.content.split('\n');
-    var i = lines.indexWhere((l) => l.trim().isNotEmpty);
-    String? heading;
-    if (i >= 0) {
-      final m = _headingRe.firstMatch(lines[i]);
-      if (m != null) {
-        final h = m.group(1)!.trim();
-        heading = h.isEmpty ? null : h;
-        i++;
-      }
-    }
-    final rest = i < 0
-        ? <String>[]
-        : lines
-              .skip(i)
-              .where((l) => l.trim().isNotEmpty && !_doneLineRe.hasMatch(l))
-              .toList();
-    final shown = rest.take(5).toList();
+    final data = _previewFor(note);
+    final heading = data.heading;
+    final rest = data.rest;
+    final shown = data.shown;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1046,7 +1108,7 @@ class _NotePreview extends StatelessWidget {
               ),
             ),
           ),
-        for (final seg in parseDoc(shown.join('\n')))
+        for (final seg in data.segments)
           if (seg is TextSeg)
             MarkdownBody(
               data: seg.text,
@@ -1131,10 +1193,7 @@ class _HomeAttachmentPreviewState extends State<_HomeAttachmentPreview> {
   }
 
   Future<Uint8List> _loadImage(NoteAttachment attachment) async {
-    final bytes = await context.read<AppState>().fetchAttachment(
-      attachment.name,
-    );
-    return Uint8List.fromList(bytes);
+    return context.read<AppState>().attachmentBytes(attachment.name);
   }
 
   @override
@@ -1163,6 +1222,7 @@ class _HomeAttachmentPreviewState extends State<_HomeAttachmentPreview> {
         child: pending != null
             ? Image.file(
                 File(pending.path),
+                cacheWidth: 320,
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) =>
                     const Icon(Icons.broken_image_outlined, size: 32),
@@ -1180,6 +1240,7 @@ class _HomeAttachmentPreviewState extends State<_HomeAttachmentPreview> {
                   }
                   return Image.memory(
                     snapshot.data!,
+                    cacheWidth: 320,
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) =>
                         const Icon(Icons.broken_image_outlined, size: 32),

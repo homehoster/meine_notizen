@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
@@ -28,21 +31,32 @@ class NotizApp extends StatefulWidget {
 }
 
 class _NotizAppState extends State<NotizApp> with WidgetsBindingObserver {
+  StreamSubscription<Uri?>? _widgetClicks;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _widgetChannel.setMethodCallHandler((call) async {
-      if (call.method == 'openWidgetUri' && call.arguments is String) {
-        _open(Uri.tryParse(call.arguments as String));
-      }
-    });
-    _widgetChannel.invokeMethod<void>('ready');
+    if (Platform.isAndroid) {
+      _widgetChannel.setMethodCallHandler((call) async {
+        if (call.method == 'openWidgetUri' && call.arguments is String) {
+          _open(Uri.tryParse(call.arguments as String));
+        }
+      });
+      _widgetChannel.invokeMethod<void>('ready');
+    } else if (Platform.isIOS) {
+      // Der MethodChannel gibt es nur auf Android (MainActivity.kt).
+      HomeWidget.initiallyLaunchedFromHomeWidget()
+          .then(_open)
+          .catchError((Object _) {});
+      _widgetClicks = HomeWidget.widgetClicked.listen(_open);
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _widgetClicks?.cancel();
     super.dispose();
   }
 
