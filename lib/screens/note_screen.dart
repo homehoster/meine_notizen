@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-
+ 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -15,14 +15,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+ 
 import '../models/note.dart';
 import '../models/space.dart';
 import '../models/task_doc.dart';
 import '../state/app_state.dart';
 import '../widgets/markdown_image_blocker.dart';
 import '../widgets/task_seg_view.dart';
-
+ 
 enum _AddAction {
   task,
   bullet,
@@ -36,7 +36,7 @@ enum _AddAction {
   location,
   memoReference,
 }
-
+ 
 Widget _menuLabel(IconData icon, String label, {TextStyle? style}) => Row(
   mainAxisSize: MainAxisSize.min,
   children: [
@@ -45,39 +45,47 @@ Widget _menuLabel(IconData icon, String label, {TextStyle? style}) => Row(
     Text(label, style: style),
   ],
 );
-
+ 
 IconData _visibilityIcon(String visibility) => switch (visibility) {
   'PUBLIC' => Icons.public_outlined,
   'PROTECTED' => Icons.group_outlined,
   'SPACE' => Icons.folder_shared_outlined,
   _ => Icons.lock_outline,
 };
-
+ 
 String _visibilityLabel(String visibility) => switch (visibility) {
   'PUBLIC' => 'Öffentlich',
   'PROTECTED' => 'Für Mitglieder',
   'SPACE' => 'Für Bereichsmitglieder',
   _ => 'Privat',
 };
-
+ 
 class NoteScreen extends StatefulWidget {
   final Note note;
   const NoteScreen({super.key, required this.note});
   @override
   State<NoteScreen> createState() => _NoteScreenState();
 }
-
+ 
 class _NoteScreenState extends State<NoteScreen> {
   late final TextEditingController c;
+  final TextEditingController _searchController = TextEditingController();
   late final AppState s;
   late final TaskEditCtx edit;
   final UndoHistoryController _undo = UndoHistoryController();
   final ImagePicker _imagePicker = ImagePicker();
   final Map<String, Future<Uint8List>> _attachmentBytes = {};
+  final Map<TextSeg, TextEditingController> _viewTextControllers = {};
+  final Map<Segment, GlobalKey> _segmentKeys = {};
+  final ScrollController _viewScrollController = ScrollController();
+  final ScrollController _editorScrollController = ScrollController();
   List<Segment> segs = [];
-  int mode = 0; // 0 Ansicht, 1 Editor (Markdown)
+  // 0 Ansicht, 1 Editor (Text direkt in der Ansicht bearbeitbar), 2 Markdown (Rohtext)
+  int mode = 0;
+  bool _searchOpen = false;
+  int _currentMatch = -1;
   Timer? _t;
-
+ 
   @override
   void initState() {
     super.initState();
@@ -85,27 +93,33 @@ class _NoteScreenState extends State<NoteScreen> {
     c = TextEditingController(text: widget.note.content);
     segs = parseDoc(c.text);
     edit = TaskEditCtx(segments: () => segs, reuse: _reuse);
-    mode = c.text.trim().isEmpty ? 1 : 0;
+    mode = c.text.trim().isEmpty ? 2 : 0;
     s.onBeforeBackground = _saveNow;
   }
-
+ 
   @override
   void dispose() {
     _t?.cancel();
     if (s.onBeforeBackground == _saveNow) s.onBeforeBackground = null;
     // Lokal sichern, leere neue Notiz verwerfen, sonst sofort zum Server senden.
     s.finishEditing(widget.note, c.text);
+    _searchController.dispose();
+    for (final controller in _viewTextControllers.values) {
+      controller.dispose();
+    }
+    _viewScrollController.dispose();
+    _editorScrollController.dispose();
     c.dispose();
     _undo.dispose();
     super.dispose();
   }
-
+ 
   /// Speichert den aktuellen Text sofort lokal (z. B. beim Wechsel in den Hintergrund).
   Future<void> _saveNow() {
     _t?.cancel();
     return s.saveContent(widget.note, c.text);
   }
-
+ 
   /// Öffnet nur http, https und mailto; alles andere (intent:, file:, tel: …) wird blockiert.
   Future<void> _openLink(String? href) async {
     final msg = ScaffoldMessenger.of(context);
@@ -134,7 +148,7 @@ class _NoteScreenState extends State<NoteScreen> {
       );
     }
   }
-
+ 
   Future<void> _markImage() async {
     try {
       final image = await _imagePicker.pickImage(source: ImageSource.gallery);
@@ -157,7 +171,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Bild konnte nicht markiert werden: $e');
     }
   }
-
+ 
   void _schedule() {
     _t?.cancel();
     _t = Timer(
@@ -165,20 +179,193 @@ class _NoteScreenState extends State<NoteScreen> {
       () => s.saveContent(widget.note, c.text),
     );
   }
-
+ 
   void _changed() {
     c.text = serializeDoc(segs);
+    _currentMatch = -1;
     _schedule();
+    if (_searchOpen && mounted) setState(() {});
   }
-
+ 
   void _setMode(int m) {
-    if (m == 0) {
-      segs = parseDoc(c.text);
+    if (m == mode) return;
+    if (m != 2) {
+      if (mode == 2) segs = parseDoc(c.text); // aus dem Rohtext neu einlesen
       edit.fresh = null;
+      _syncViewTextControllers();
     }
     setState(() => mode = m);
   }
-
+ 
+  void _syncViewTextControllers() {
+    final textSegments = segs.whereType<TextSeg>().toSet();
+    for (final segment in _viewTextControllers.keys.toList()) {
+      if (!textSegments.contains(segment)) {
+        _viewTextControllers.remove(segment)?.dispose();
+      }
+    }
+    for (final segment in textSegments) {
+      final controller = _viewTextControllers[segment];
+      if (controller == null) {
+        _viewTextControllers[segment] = TextEditingController(
+          text: segment.text,
+        );
+      } else if (controller.text != segment.text) {
+        controller.value = TextEditingValue(
+          text: segment.text,
+          selection: TextSelection.collapsed(offset: segment.text.length),
+        );
+      }
+    }
+  }
+ 
+  List<TextSelection> get _searchMatches {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) return const [];
+    final expression = RegExp(RegExp.escape(query), caseSensitive: false);
+    final matches = <TextSelection>[];
+    for (final result in expression.allMatches(c.text)) {
+      matches.add(
+        TextSelection(baseOffset: result.start, extentOffset: result.end),
+      );
+    }
+    return matches;
+  }
+ 
+  void _searchChanged(String value) {
+    setState(() => _currentMatch = -1);
+    if (value.trim().isNotEmpty) _navigateSearch(1);
+  }
+ 
+  void _toggleSearch() {
+    if (_searchOpen) {
+      _searchController.clear();
+      setState(() {
+        _searchOpen = false;
+        _currentMatch = -1;
+      });
+      return;
+    }
+    setState(() => _searchOpen = true);
+  }
+ 
+  void _navigateSearch(int direction) {
+    final matches = _searchMatches;
+    if (matches.isEmpty) {
+      setState(() => _currentMatch = -1);
+      return;
+    }
+    setState(() {
+      if (direction > 0) {
+        _currentMatch = (_currentMatch + 1) % matches.length;
+      } else {
+        _currentMatch = _currentMatch <= 0
+            ? matches.length - 1
+            : _currentMatch - 1;
+      }
+    });
+ 
+    final match = matches[_currentMatch];
+    if (mode == 2) {
+      c.selection = match;
+      _scrollEditorTo(match.start);
+    } else {
+      _scrollViewTo(match.start);
+    }
+  }
+ 
+  /// Markdown-Modus: Zeilenposition des Treffers berechnen und dorthin scrollen.
+  void _scrollEditorTo(int charOffset) {
+    if (!_editorScrollController.hasClients) return;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: c.text,
+        style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: MediaQuery.sizeOf(context).width - 24);
+    final dy = painter
+        .getOffsetForCaret(TextPosition(offset: charOffset), Rect.zero)
+        .dy;
+    painter.dispose();
+    final position = _editorScrollController.position;
+    final target = (dy - position.viewportDimension * 0.3)
+        .clamp(0.0, position.maxScrollExtent)
+        .toDouble();
+    _editorScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+ 
+  /// Ansicht/Editor: Segment des Treffers finden und anteilig darin scrollen.
+  void _scrollViewTo(int charOffset, {bool retry = true}) {
+    if (!_viewScrollController.hasClients) return;
+    var offset = 0;
+    Segment? target;
+    var segStart = 0;
+    var segLength = 0;
+    for (final segment in segs) {
+      final length = serializeDoc([segment]).length;
+      if (charOffset >= offset && charOffset < offset + length + 1) {
+        target = segment;
+        segStart = offset;
+        segLength = length;
+        break;
+      }
+      offset += length + 1;
+    }
+ 
+    final position = _viewScrollController.position;
+    final box = target == null
+        ? null
+        : _segmentKeys[target]?.currentContext?.findRenderObject();
+ 
+    if (box is! RenderBox || !box.attached) {
+      // Segment ist noch nicht gebaut (weit unten): grob hinspringen, dann erneut versuchen.
+      final total = c.text.isEmpty ? 1 : c.text.length;
+      _viewScrollController.jumpTo(
+        (position.maxScrollExtent * charOffset / total)
+            .clamp(0.0, position.maxScrollExtent)
+            .toDouble(),
+      );
+      if (retry) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _scrollViewTo(charOffset, retry: false);
+        });
+      }
+      return;
+    }
+ 
+    final fraction = segLength == 0
+        ? 0.0
+        : ((charOffset - segStart) / segLength).clamp(0.0, 1.0);
+    final reveal = RenderAbstractViewport.of(
+      box,
+    ).getOffsetToReveal(box, 0.0).offset;
+    final goal =
+        (reveal +
+                box.size.height * fraction -
+                position.viewportDimension * 0.3)
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble();
+    _viewScrollController.animateTo(
+      goal,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+ 
+  TextEditingController _viewController(TextSeg segment) => _viewTextControllers
+      .putIfAbsent(segment, () => TextEditingController(text: segment.text));
+ 
+  void _viewTextChanged(TextSeg segment, String value) {
+    segment.text = value;
+    _changed();
+  }
+ 
   /// Neuer Eintrag ist ein Duplikat: bestehenden Eintrag wieder öffnen, neuen verwerfen.
   void _reuse(Task fresh, Task existing) {
     setState(() {
@@ -191,7 +378,7 @@ class _NoteScreenState extends State<NoteScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     _changed();
   }
-
+ 
   void _addListItem(TaskListType type) {
     if (!s.assistedEditingEnabled) return;
     final t = Task('');
@@ -207,7 +394,7 @@ class _NoteScreenState extends State<NoteScreen> {
     });
     _changed();
   }
-
+ 
   String _mimeType(String filename) {
     final extension = p.extension(filename).toLowerCase();
     return switch (extension) {
@@ -244,7 +431,7 @@ class _NoteScreenState extends State<NoteScreen> {
       _ => 'application/octet-stream',
     };
   }
-
+ 
   Future<void> _showAddMenu() async {
     final assistedEditingEnabled = s.assistedEditingEnabled;
     final action = await showModalBottomSheet<_AddAction>(
@@ -274,8 +461,7 @@ class _NoteScreenState extends State<NoteScreen> {
                   ListTile(
                     leading: const Icon(Icons.format_list_numbered),
                     title: const Text('Nummerierung hinzufügen'),
-                    onTap: () =>
-                        Navigator.pop(context, _AddAction.numbered),
+                    onTap: () => Navigator.pop(context, _AddAction.numbered),
                   ),
                   const Divider(height: 1),
                 ],
@@ -312,8 +498,7 @@ class _NoteScreenState extends State<NoteScreen> {
                 ListTile(
                   leading: const Icon(Icons.location_on_outlined),
                   title: const Text('Aktuellen Standort hinzufügen'),
-                  onTap: () =>
-                      Navigator.pop(context, _AddAction.location),
+                  onTap: () => Navigator.pop(context, _AddAction.location),
                 ),
                 ListTile(
                   leading: const Icon(Icons.link),
@@ -353,13 +538,14 @@ class _NoteScreenState extends State<NoteScreen> {
         await _addMemoReference();
     }
   }
-
+ 
   Future<void> _showError(String message) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
-
+ 
   Future<void> _attachFile(String path, String filename, String type) async {
     try {
       await s.addPendingAttachment(
@@ -375,7 +561,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Anhang konnte nicht hinzugefügt werden: $e');
     }
   }
-
+ 
   Future<void> _pickFile() async {
     try {
       final file = await FilePicker.pickFile(type: FileType.any);
@@ -395,7 +581,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Dateiauswahl fehlgeschlagen: $e');
     }
   }
-
+ 
   Future<void> _pickImage(ImageSource source) async {
     try {
       final image = await _imagePicker.pickImage(source: source);
@@ -409,7 +595,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Bild konnte nicht ausgewählt werden: $e');
     }
   }
-
+ 
   Future<void> _drawImage() async {
     final bytes = await showDialog<Uint8List>(
       context: context,
@@ -428,7 +614,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Zeichnung konnte nicht gespeichert werden: $e');
     }
   }
-
+ 
   Future<void> _recordAudio() async {
     final recorder = AudioRecorder();
     try {
@@ -480,7 +666,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await recorder.dispose();
     }
   }
-
+ 
   Future<void> _addLocation() async {
     final accepted = await showDialog<bool>(
       context: context,
@@ -533,7 +719,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Standort konnte nicht gelesen werden: $e');
     }
   }
-
+ 
   Future<void> _chooseSpace() async {
     final selected = await showModalBottomSheet<String>(
       context: context,
@@ -587,12 +773,14 @@ class _NoteScreenState extends State<NoteScreen> {
     }
     await s.assignSpace(widget.note, space);
   }
-
+ 
   Future<void> _openAttachment(NoteAttachment attachment) async {
     try {
       final bytes = attachment.type.startsWith('image/')
           ? await _attachmentBytes.putIfAbsent(attachment.name, () async {
-              return Uint8List.fromList(await s.fetchAttachment(attachment.name));
+              return Uint8List.fromList(
+                await s.fetchAttachment(attachment.name),
+              );
             })
           : Uint8List.fromList(await s.fetchAttachment(attachment.name));
       final directory = await getTemporaryDirectory();
@@ -612,7 +800,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Anhang konnte nicht geöffnet werden: $e');
     }
   }
-
+ 
   Future<void> _openPendingAttachment(PendingAttachment attachment) async {
     try {
       await _openWithOperatingSystem(attachment.path, attachment.type);
@@ -620,7 +808,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Anhang konnte nicht geöffnet werden: $e');
     }
   }
-
+ 
   Future<void> _openWithOperatingSystem(String path, String type) async {
     final result = await OpenFilex.open(path, type: type);
     if (!mounted || result.type == ResultType.done) return;
@@ -630,7 +818,7 @@ class _NoteScreenState extends State<NoteScreen> {
           : 'Öffnen fehlgeschlagen: ${result.message}',
     );
   }
-
+ 
   Future<bool> _confirmRemoveAttachment(
     String filename, {
     required bool local,
@@ -656,12 +844,9 @@ class _NoteScreenState extends State<NoteScreen> {
         ),
       ) ??
       false;
-
+ 
   Future<void> _removeAttachment(NoteAttachment attachment) async {
-    if (!await _confirmRemoveAttachment(
-          attachment.filename,
-          local: false,
-        ) ||
+    if (!await _confirmRemoveAttachment(attachment.filename, local: false) ||
         !mounted) {
       return;
     }
@@ -672,12 +857,9 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Anhang konnte nicht entfernt werden: $e');
     }
   }
-
+ 
   Future<void> _removePendingAttachment(PendingAttachment attachment) async {
-    if (!await _confirmRemoveAttachment(
-          attachment.filename,
-          local: true,
-        ) ||
+    if (!await _confirmRemoveAttachment(attachment.filename, local: true) ||
         !mounted) {
       return;
     }
@@ -690,7 +872,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Anhang konnte nicht entfernt werden: $e');
     }
   }
-
+ 
   Future<void> _removeLocation() async {
     try {
       await s.removeLocation(widget.note);
@@ -698,13 +880,13 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Standort konnte nicht entfernt werden: $e');
     }
   }
-
+ 
   String _formatSize(int size) {
     if (size < 1024) return '$size B';
     if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
     return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
-
+ 
   Future<void> _addMemoReference() async {
     if (widget.note.isLocal) {
       await _showError('Die Notiz muss zuerst synchronisiert werden.');
@@ -724,7 +906,7 @@ class _NoteScreenState extends State<NoteScreen> {
       await _showError('Verknüpfung konnte nicht hinzugefügt werden: $e');
     }
   }
-
+ 
   Widget _linkedMemos({bool compact = false}) {
     final relationsById = <String, MemoRelation>{};
     for (final relation in widget.note.relations) {
@@ -734,7 +916,7 @@ class _NoteScreenState extends State<NoteScreen> {
         relationsById.putIfAbsent(id, () => relation);
       }
     }
-
+ 
     Widget tile(String id, MemoRelation relation) {
       final linkedNote = s.byId(id);
       final title =
@@ -768,12 +950,13 @@ class _NoteScreenState extends State<NoteScreen> {
         ),
       );
     }
-
+ 
     final entries = relationsById.entries.toList();
     if (entries.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const Divider(height: 1),
         if (compact)
           SizedBox(
             height: 64,
@@ -788,7 +971,7 @@ class _NoteScreenState extends State<NoteScreen> {
       ],
     );
   }
-
+ 
   Widget _imageAttachmentPreview(NoteAttachment attachment) {
     final future = _attachmentBytes.putIfAbsent(attachment.name, () async {
       return Uint8List.fromList(await s.fetchAttachment(attachment.name));
@@ -810,7 +993,9 @@ class _NoteScreenState extends State<NoteScreen> {
                     const Icon(Icons.broken_image_outlined),
                     const SizedBox(width: 8),
                     Flexible(
-                      child: Text('Bild konnte nicht geladen werden: ${snapshot.error}'),
+                      child: Text(
+                        'Bild konnte nicht geladen werden: ${snapshot.error}',
+                      ),
                     ),
                     IconButton(
                       tooltip: 'Erneut laden',
@@ -829,9 +1014,8 @@ class _NoteScreenState extends State<NoteScreen> {
               return Image.memory(
                 snapshot.data!,
                 fit: BoxFit.contain,
-                errorBuilder: (_, error, _) => const Center(
-                  child: Icon(Icons.broken_image_outlined),
-                ),
+                errorBuilder: (_, error, _) =>
+                    const Center(child: Icon(Icons.broken_image_outlined)),
               );
             },
           ),
@@ -839,7 +1023,7 @@ class _NoteScreenState extends State<NoteScreen> {
       ),
     );
   }
-
+ 
   Widget _pendingImagePreview(PendingAttachment attachment) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: SizedBox(
@@ -848,92 +1032,118 @@ class _NoteScreenState extends State<NoteScreen> {
       child: Image.file(
         File(attachment.path),
         fit: BoxFit.contain,
-        errorBuilder: (_, error, _) => const Center(
-          child: Icon(Icons.broken_image_outlined),
-        ),
+        errorBuilder: (_, error, _) =>
+            const Center(child: Icon(Icons.broken_image_outlined)),
       ),
     ),
   );
-
-  Widget _attachmentTile(NoteAttachment attachment) => ListTile(
-    leading: Icon(
-      attachment.type.startsWith('image/')
-          ? Icons.image_outlined
-          : attachment.type.startsWith('audio/')
-          ? Icons.audiotrack
-          : Icons.insert_drive_file_outlined,
-    ),
-    title: Text(attachment.filename),
-    subtitle: Text('${attachment.type} · ${_formatSize(attachment.size)}'),
-    trailing: IconButton(
-      tooltip: 'Anhang entfernen',
-      icon: const Icon(Icons.delete_outline),
-      onPressed: widget.note.busy ? null : () => _removeAttachment(attachment),
-    ),
-    onTap: widget.note.busy ? null : () => _openAttachment(attachment),
-  );
-
-  Widget _attachments() {
+ 
+  Widget _attachmentTile(NoteAttachment attachment, {bool compact = false}) =>
+      ListTile(
+        dense: compact,
+        leading: Icon(
+          attachment.type.startsWith('image/')
+              ? Icons.image_outlined
+              : attachment.type.startsWith('audio/')
+              ? Icons.audiotrack
+              : Icons.insert_drive_file_outlined,
+        ),
+        title: Text(
+          attachment.filename,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text('${attachment.type} · ${_formatSize(attachment.size)}'),
+        trailing: IconButton(
+          tooltip: 'Anhang entfernen',
+          icon: const Icon(Icons.delete_outline),
+          onPressed: widget.note.busy
+              ? null
+              : () => _removeAttachment(attachment),
+        ),
+        onTap: widget.note.busy ? null : () => _openAttachment(attachment),
+      );
+ 
+  Widget _pendingTile(PendingAttachment pending, {bool compact = false}) =>
+      ListTile(
+        dense: compact,
+        leading: const Icon(Icons.cloud_upload_outlined),
+        title: Text(
+          pending.filename,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          pending.uploadedName == null
+              ? 'Wird synchronisiert'
+              : 'Hochgeladen, Verknüpfung ausstehend',
+        ),
+        trailing: IconButton(
+          tooltip: 'Anhang entfernen',
+          icon: const Icon(Icons.delete_outline),
+          onPressed: widget.note.busy
+              ? null
+              : () => _removePendingAttachment(pending),
+        ),
+        onTap: widget.note.busy ? null : () => _openPendingAttachment(pending),
+      );
+ 
+  Widget _locationTile(NoteLocation location, {bool compact = false}) =>
+      ListTile(
+        dense: compact,
+        leading: const Icon(Icons.location_on_outlined),
+        title: Text(
+          location.placeholder.isEmpty ? 'Standort' : location.placeholder,
+        ),
+        subtitle: Text(
+          '${location.latitude.toStringAsFixed(5)}, '
+          '${location.longitude.toStringAsFixed(5)}',
+        ),
+        trailing: IconButton(
+          tooltip: 'Standort entfernen',
+          icon: const Icon(Icons.delete_outline),
+          onPressed: widget.note.busy ? null : _removeLocation,
+        ),
+        onTap: () => _openLink(
+          'https://maps.google.com/?q=${location.latitude},${location.longitude}',
+        ),
+      );
+ 
+  Widget _attachments({bool compact = false}) {
     final note = widget.note;
     if (note.attachments.isEmpty &&
         note.pendingAttachments.isEmpty &&
         note.location == null) {
       return const SizedBox.shrink();
     }
+ 
+    final items = <Widget>[
+      for (final attachment in note.attachments) ...[
+        if (!compact && attachment.type.startsWith('image/'))
+          _imageAttachmentPreview(attachment),
+        _attachmentTile(attachment, compact: compact),
+      ],
+      for (final pending in note.pendingAttachments) ...[
+        if (!compact && pending.type.startsWith('image/'))
+          _pendingImagePreview(pending),
+        _pendingTile(pending, compact: compact),
+      ],
+      if (note.location case final location?)
+        _locationTile(location, compact: compact),
+    ];
+ 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final attachment in note.attachments)
-          if (attachment.type.startsWith('image/')) ...[
-            _imageAttachmentPreview(attachment),
-            _attachmentTile(attachment),
-          ] else
-            _attachmentTile(attachment),
-        for (final pending in note.pendingAttachments)
-          ...[
-            if (pending.type.startsWith('image/'))
-              _pendingImagePreview(pending),
-            ListTile(
-              leading: const Icon(Icons.cloud_upload_outlined),
-              title: Text(pending.filename),
-              subtitle: Text(
-                pending.uploadedName == null
-                    ? 'Wird synchronisiert'
-                    : 'Hochgeladen, Verknüpfung ausstehend',
-              ),
-              trailing: IconButton(
-                tooltip: 'Anhang entfernen',
-                icon: const Icon(Icons.delete_outline),
-                onPressed: note.busy
-                    ? null
-                    : () => _removePendingAttachment(pending),
-              ),
-              onTap: note.busy ? null : () => _openPendingAttachment(pending),
-            ),
-          ],
-        if (note.location case final location?)
-          ListTile(
-            leading: const Icon(Icons.location_on_outlined),
-            title: Text(
-              location.placeholder.isEmpty ? 'Standort' : location.placeholder,
-            ),
-            subtitle: Text(
-              '${location.latitude.toStringAsFixed(5)}, '
-              '${location.longitude.toStringAsFixed(5)}',
-            ),
-            trailing: IconButton(
-              tooltip: 'Standort entfernen',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: note.busy ? null : _removeLocation,
-            ),
-            onTap: () => _openLink(
-              'https://maps.google.com/?q=${location.latitude},${location.longitude}',
-            ),
-          ),
+        const Divider(height: 1),
+        if (compact)
+          SizedBox(height: 64, child: ListView(children: items))
+        else
+          ...items,
       ],
     );
   }
-
+ 
   void _wrap(String a, String b) {
     final sel = c.selection;
     final t = c.text;
@@ -951,7 +1161,7 @@ class _NoteScreenState extends State<NoteScreen> {
     }
     _schedule();
   }
-
+ 
   void _linePrefix(String p) {
     final t = c.text;
     final pos = c.selection.isValid ? c.selection.start : t.length;
@@ -962,7 +1172,7 @@ class _NoteScreenState extends State<NoteScreen> {
     );
     _schedule();
   }
-
+ 
   /// level 0 = normaler Text, 1 = H1, 2 = H2. Ersetzt eine vorhandene Überschrift der Zeile.
   void _setHeading(int level) {
     final t = c.text;
@@ -983,7 +1193,7 @@ class _NoteScreenState extends State<NoteScreen> {
     );
     _schedule();
   }
-
+ 
   Widget _toolbar(bool assistedEditingEnabled) {
     Widget b(IconData i, String tip, VoidCallback f) =>
         IconButton(icon: Icon(i), tooltip: tip, onPressed: f);
@@ -1022,7 +1232,11 @@ class _NoteScreenState extends State<NoteScreen> {
           b(Icons.format_bold, 'Fett', () => _wrap('**', '**')),
           b(Icons.format_italic, 'Kursiv', () => _wrap('*', '*')),
           if (assistedEditingEnabled)
-            b(Icons.format_list_bulleted, 'Aufzählung', () => _linePrefix('- ')),
+            b(
+              Icons.format_list_bulleted,
+              'Aufzählung',
+              () => _linePrefix('- '),
+            ),
           if (assistedEditingEnabled)
             b(
               Icons.format_list_numbered,
@@ -1042,36 +1256,52 @@ class _NoteScreenState extends State<NoteScreen> {
       ),
     );
   }
-
+ 
   Widget _body(bool blockMarkdownImages) {
-    if (mode == 0) {
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-        children: [
-          for (final seg in segs)
-            if (seg is TextSeg)
-              (seg.text.trim().isEmpty
-                  ? const SizedBox.shrink()
-                  : MarkdownBody(
-                      data: seg.text,
-                      onTapLink: (t, href, title) => _openLink(href),
-                      imageBuilder: blockMarkdownImages
-                          ? blockedMarkdownImage
-                          : null,
-                    ))
-            else
-              TaskSegView(
-                key: ObjectKey(seg),
-                seg: seg as TaskSeg,
-                edit: edit,
-                onChanged: _changed,
-                onOpenLink: _openLink,
-                assistedEditingEnabled: s.assistedEditingEnabled,
-                blockMarkdownImages: blockMarkdownImages,
+    if (mode != 2) {
+      final editing = mode == 1;
+      return SelectionArea(
+        child: ListView(
+          controller: _viewScrollController,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+          children: [
+            for (final seg in segs)
+              KeyedSubtree(
+                key: _segmentKeys.putIfAbsent(seg, GlobalKey.new),
+                child: seg is TextSeg
+                    ? (seg.text.trim().isEmpty && !editing
+                          ? const SizedBox.shrink()
+                          : editing
+                          ? TextField(
+                              controller: _viewController(seg),
+                              maxLines: null,
+                              onChanged: (value) =>
+                                  _viewTextChanged(seg, value),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                              ),
+                            )
+                          : MarkdownBody(
+                              data: seg.text,
+                              onTapLink: (t, href, title) => _openLink(href),
+                              imageBuilder: blockMarkdownImages
+                                  ? blockedMarkdownImage
+                                  : null,
+                            ))
+                    : TaskSegView(
+                        key: ObjectKey(seg),
+                        seg: seg as TaskSeg,
+                        edit: edit,
+                        onChanged: _changed,
+                        onOpenLink: _openLink,
+                        assistedEditingEnabled: s.assistedEditingEnabled,
+                        blockMarkdownImages: blockMarkdownImages,
+                      ),
               ),
-          _attachments(),
-          _linkedMemos(),
-        ],
+            _attachments(),
+            _linkedMemos(),
+          ],
+        ),
       );
     }
     return Column(
@@ -1082,6 +1312,7 @@ class _NoteScreenState extends State<NoteScreen> {
             padding: const EdgeInsets.all(12),
             child: TextField(
               controller: c,
+              scrollController: _editorScrollController,
               undoController: _undo,
               maxLines: null,
               expands: true,
@@ -1095,11 +1326,12 @@ class _NoteScreenState extends State<NoteScreen> {
             ),
           ),
         ),
+        _attachments(compact: true),
         _linkedMemos(compact: true),
       ],
     );
   }
-
+ 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -1108,6 +1340,11 @@ class _NoteScreenState extends State<NoteScreen> {
       appBar: AppBar(
         title: Text(widget.note.isLocal ? 'Neue Notiz' : 'Notiz'),
         actions: [
+          IconButton(
+            tooltip: _searchOpen ? 'Suche schließen' : 'In der Notiz suchen',
+            icon: Icon(_searchOpen ? Icons.close : Icons.search),
+            onPressed: _toggleSearch,
+          ),
           PopupMenuButton<String>(
             tooltip:
                 'Sichtbarkeit: ${_visibilityLabel(widget.note.visibility)}',
@@ -1226,23 +1463,87 @@ class _NoteScreenState extends State<NoteScreen> {
               segments: const [
                 ButtonSegment(
                   value: 0,
-                  icon: Icon(Icons.checklist),
+                  icon: Icon(Icons.visibility_outlined),
                   label: Text('Ansicht'),
                 ),
                 ButtonSegment(
                   value: 1,
-                  icon: Icon(Icons.edit),
+                  icon: Icon(Icons.edit_note),
                   label: Text('Editor'),
+                ),
+                ButtonSegment(
+                  value: 2,
+                  icon: Icon(Icons.code),
+                  label: Text('Markdown'),
                 ),
               ],
               selected: {mode},
               onSelectionChanged: (v) => _setMode(v.first),
             ),
           ),
+          if (_searchOpen)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    onChanged: _searchChanged,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'In dieser Notiz suchen',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Suche löschen',
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                _searchChanged('');
+                              },
+                            ),
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  if (_searchController.text.trim().isNotEmpty)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _searchMatches.isEmpty
+                                ? 'Keine Treffer'
+                                : _currentMatch >= 0 &&
+                                      _currentMatch < _searchMatches.length
+                                ? 'Treffer ${_currentMatch + 1} von ${_searchMatches.length}'
+                                : '${_searchMatches.length} Treffer',
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Vorheriger Treffer',
+                          onPressed: _searchMatches.isEmpty
+                              ? null
+                              : () => _navigateSearch(-1),
+                          icon: const Icon(Icons.keyboard_arrow_up),
+                        ),
+                        IconButton(
+                          tooltip: 'Nächster Treffer',
+                          onPressed: _searchMatches.isEmpty
+                              ? null
+                              : () => _navigateSearch(1),
+                          icon: const Icon(Icons.keyboard_arrow_down),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
           Expanded(child: _body(blockMarkdownImages)),
         ],
       ),
-      floatingActionButton: mode == 0
+      floatingActionButton: mode != 2
           ? FloatingActionButton(
               onPressed: _showAddMenu,
               tooltip: 'Eintrag oder Anhang hinzufügen',
@@ -1252,20 +1553,20 @@ class _NoteScreenState extends State<NoteScreen> {
     );
   }
 }
-
+ 
 class _MemoSearchDialog extends StatefulWidget {
   final String noteId;
   final Set<String> excludedIds;
-
+ 
   const _MemoSearchDialog({required this.noteId, required this.excludedIds});
-
+ 
   @override
   State<_MemoSearchDialog> createState() => _MemoSearchDialogState();
 }
-
+ 
 class _MemoSearchDialogState extends State<_MemoSearchDialog> {
   String _query = '';
-
+ 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -1277,7 +1578,7 @@ class _MemoSearchDialogState extends State<_MemoSearchDialog> {
           !widget.excludedIds.contains(note.id),
     );
     final results = filterNotesByQuery(candidates, _query);
-
+ 
     return AlertDialog(
       title: const Text('Notiz verknüpfen'),
       content: SizedBox(
@@ -1337,21 +1638,21 @@ class _MemoSearchDialogState extends State<_MemoSearchDialog> {
     );
   }
 }
-
+ 
 class _DrawingDialog extends StatefulWidget {
   final Uint8List? backgroundBytes;
-
+ 
   const _DrawingDialog({this.backgroundBytes});
-
+ 
   @override
   State<_DrawingDialog> createState() => _DrawingDialogState();
 }
-
+ 
 class _DrawingDialogState extends State<_DrawingDialog> {
   final _boundaryKey = GlobalKey();
   final List<Offset?> _points = [];
   bool _saving = false;
-
+ 
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
@@ -1374,7 +1675,7 @@ class _DrawingDialogState extends State<_DrawingDialog> {
       }
     }
   }
-
+ 
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Zeichnung / Markierung'),
@@ -1422,12 +1723,12 @@ class _DrawingDialogState extends State<_DrawingDialog> {
     ],
   );
 }
-
+ 
 class _DrawingPainter extends CustomPainter {
   final List<Offset?> points;
-
+ 
   const _DrawingPainter(this.points);
-
+ 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
@@ -1444,7 +1745,8 @@ class _DrawingPainter extends CustomPainter {
       }
     }
   }
-
+ 
   @override
   bool shouldRepaint(covariant _DrawingPainter oldDelegate) => true;
 }
+ 
