@@ -1159,6 +1159,18 @@ class _NoteScreenState extends State<NoteScreen> {
                 ),
             ],
           ),
+          IconButton(
+            icon: Icon(
+              s.widgetIds.contains(widget.note.id)
+                  ? Icons.widgets
+                  : Icons.widgets_outlined,
+            ),
+            tooltip: 'Im Widget anzeigen',
+            onPressed: () async {
+              await s.toggleWidget(widget.note);
+              setState(() {});
+            },
+          ),
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
@@ -1202,28 +1214,6 @@ class _NoteScreenState extends State<NoteScreen> {
                   ),
                 ),
             ],
-          ),
-          IconButton(
-            icon: Icon(
-              s.widgetIds.contains(widget.note.id)
-                  ? Icons.widgets
-                  : Icons.widgets_outlined,
-            ),
-            tooltip: 'Im Widget anzeigen',
-            onPressed: () async {
-              await s.toggleWidget(widget.note);
-              setState(() {});
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: 'Notiz löschen',
-            onPressed: () async {
-              final nav = Navigator.of(context);
-              _t?.cancel();
-              await s.deleteNote(widget.note);
-              nav.pop();
-            },
           ),
         ],
       ),
