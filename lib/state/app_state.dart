@@ -21,6 +21,8 @@ import '../services/store.dart';
 
 enum NavigationKind { all, archive, space, view, tag }
 
+enum AppTheme { system, light, dark, paper }
+
 class NavigationTarget {
   final NavigationKind kind;
   final String? id;
@@ -39,7 +41,7 @@ class AppState extends ChangeNotifier {
   String baseUrl = '';
   String token = '';
   String serverVersion = '';
-  ThemeMode themeMode = ThemeMode.system;
+  AppTheme themeSelection = AppTheme.system;
   bool blockMarkdownImages = true;
   bool assistedEditingEnabled = true;
   List<Note> notes = [];
@@ -141,7 +143,10 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     final preferences = await SharedPreferences.getInstance();
     baseUrl = preferences.getString('url') ?? '';
-    themeMode = ThemeMode.values[preferences.getInt('theme') ?? 0];
+    final themeIndex = preferences.getInt('theme') ?? 0;
+    themeSelection = themeIndex >= 0 && themeIndex < AppTheme.values.length
+        ? AppTheme.values[themeIndex]
+        : AppTheme.system;
     blockMarkdownImages = preferences.getBool('blockMarkdownImages') ?? true;
     assistedEditingEnabled =
         preferences.getBool('assistedEditingEnabled') ?? true;
@@ -197,8 +202,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setTheme(ThemeMode mode) async {
-    themeMode = mode;
+  Future<void> setTheme(AppTheme mode) async {
+    themeSelection = mode;
     final preferences = await SharedPreferences.getInstance();
     await preferences.setInt('theme', mode.index);
     notifyListeners();

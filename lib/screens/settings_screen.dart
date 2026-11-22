@@ -277,27 +277,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.palette_outlined,
           ),
           Card(
-            child: RadioGroup<ThemeMode>(
-              groupValue: s.themeMode,
+            child: RadioGroup<AppTheme>(
+              groupValue: s.themeSelection,
               onChanged: (mode) {
                 if (mode != null) s.setTheme(mode);
               },
-              child: const Column(
+              child: Column(
                 children: [
-                  RadioListTile<ThemeMode>(
+                  const RadioListTile<AppTheme>(
                     secondary: Icon(Icons.light_mode_outlined),
                     title: Text('Hell'),
-                    value: ThemeMode.light,
+                    value: AppTheme.light,
                   ),
-                  RadioListTile<ThemeMode>(
+                  const RadioListTile<AppTheme>(
                     secondary: Icon(Icons.dark_mode_outlined),
                     title: Text('Dunkel'),
-                    value: ThemeMode.dark,
+                    value: AppTheme.dark,
                   ),
-                  RadioListTile<ThemeMode>(
+                  const RadioListTile<AppTheme>(
+                    secondary: Icon(Icons.menu_book_outlined),
+                    title: Text('Papier'),
+                    subtitle: Text('Warme, helle Farben wie Papier und Tinte'),
+                    value: AppTheme.paper,
+                  ),
+                  const RadioListTile<AppTheme>(
                     secondary: Icon(Icons.settings_brightness_outlined),
                     title: Text('Wie Systemeinstellung'),
-                    value: ThemeMode.system,
+                    value: AppTheme.system,
                   ),
                 ],
               ),

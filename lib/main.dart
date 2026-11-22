@@ -124,15 +124,76 @@ class _NotizAppState extends State<NotizApp> with WidgetsBindingObserver {
     return MaterialApp(
       navigatorKey: navKey,
       title: 'Notizen',
-      themeMode: s.themeMode,
-      theme: _buildTheme(Brightness.light),
+      themeMode: switch (s.themeSelection) {
+        AppTheme.system => ThemeMode.system,
+        AppTheme.light || AppTheme.paper => ThemeMode.light,
+        AppTheme.dark => ThemeMode.dark,
+      },
+      theme: _buildTheme(
+        Brightness.light,
+        paper: s.themeSelection == AppTheme.paper,
+      ),
       darkTheme: _buildTheme(Brightness.dark),
       home: const HomeScreen(),
     );
   }
 }
 
-ThemeData _buildTheme(Brightness brightness) {
+ThemeData _buildTheme(Brightness brightness, {bool paper = false}) {
+  if (paper) {
+    const canvas = Color(0xFFF5EDE4);
+    const surface = Color(0xFFFBF6F0);
+    const ink = Color(0xFF2B2219);
+    const primary = Color(0xFF2F251C);
+    const edge = Color(0xFFD3C5B4);
+    final colorScheme =
+        ColorScheme.fromSeed(
+          seedColor: primary,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: primary,
+          onPrimary: surface,
+          secondary: const Color(0xFF2863AB),
+          surface: surface,
+          onSurface: ink,
+          surfaceContainerLowest: const Color(0xFFFDF9F4),
+          surfaceContainerLow: const Color(0xFFF8F1E9),
+          surfaceContainer: canvas,
+          surfaceContainerHigh: const Color(0xFFEDE3D7),
+          surfaceContainerHighest: const Color(0xFFE7DCCF),
+          outline: edge,
+          outlineVariant: const Color(0xFFE0D4C5),
+          error: const Color(0xFFA83D2B),
+          errorContainer: const Color(0xFFF6E1D9),
+        );
+
+    return ThemeData(
+      colorScheme: colorScheme,
+      useMaterial3: true,
+      scaffoldBackgroundColor: canvas,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: canvas,
+        foregroundColor: ink,
+        elevation: 0,
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: primary,
+        foregroundColor: surface,
+      ),
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      dividerTheme: const DividerThemeData(color: Color(0xFFE0D4C5)),
+      textSelectionTheme: const TextSelectionThemeData(
+        selectionColor: Color(0x2E2863AB),
+        cursorColor: primary,
+        selectionHandleColor: primary,
+      ),
+    );
+  }
+
   final colorScheme = ColorScheme.fromSeed(
     seedColor: _seedColor,
     brightness: brightness,
