@@ -18,7 +18,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/note.dart';
 import '../models/saved_view.dart';
 import '../models/space.dart';
-import '../models/task_doc.dart';
 import '../services/api.dart';
 import '../services/log.dart';
 import '../services/store.dart';
@@ -1002,20 +1001,9 @@ class AppState extends ChangeNotifier {
           .where((note) => widgetIds.contains(note.id))
           .toList();
       final values = selected.isEmpty ? ordered : selected;
-      final items = <Map<String, dynamic>>[];
       for (final note in values) {
-        final imagePath = await _widgetImagePath(note);
-        items.add({
-          'id': note.id,
-          'title': note.title,
-          'preview': widgetPreview(note.content),
-          'imagePath': imagePath ?? '',
-        });
+        await _widgetImagePath(note);
       }
-      await HomeWidget.saveWidgetData<String>(
-        'widget_notes',
-        jsonEncode(items),
-      );
       await HomeWidget.updateWidget(
         androidName: 'NoteWidgetProvider',
         iOSName: 'NoteWidget',

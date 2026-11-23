@@ -15,14 +15,8 @@ class NoteWidgetProvider : HomeWidgetProvider() {
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray,
-        widgetData: SharedPreferences
+        @Suppress("UNUSED_PARAMETER") widgetData: SharedPreferences
     ) {
-        val noteData = widgetData.getString(NoteWidgetService.NOTE_DATA_KEY, "[]") ?: "[]"
-        context.getSharedPreferences(NoteWidgetService.PREFERENCES_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(NoteWidgetService.NOTE_DATA_KEY, noteData)
-            .apply()
-
         appWidgetIds.forEach { widgetId ->
             val views = RemoteViews(context.packageName, R.layout.note_widget).apply {
                 val serviceIntent = Intent(context, NoteWidgetService::class.java).apply {

@@ -46,7 +46,7 @@ Das Hauptaugenmerk liegt auf einer **leichten Erfassung**: Listen, Aufgaben und 
 - 📎 **Anhänge und Medien** – Dateien, Bilder, Zeichnungen/Markierungen, Audioaufnahmen und den aktuellen Standort zu einer Notiz hinzufügen.
 - 📴 **Offline-first** – Notizen werden lokal gespeichert; nicht synchronisierte Notizen sind mit einem Wolken-Symbol markiert.
 - 🔄 **Sync mit Memos** – optional, mit Server-URL und Access Token. Siehe [unten](#mit-memos-synchronisieren).
-- 📱 **Homescreen-Widget (Android)** – zeigt eine Auswahl deiner Notizen und springt per Tipp direkt in die Notiz. Über das „+“ im Widget legst du eine neue Notiz an.
+- 📱 **Homescreen-Widget (Android)** – zeigt eine Auswahl deiner Notizen direkt aus demselben lokalen SQLite-Speicher wie die App (ohne separate Notizkopie) und springt per Tipp direkt in die Notiz. Über das „+“ im Widget legst du eine neue Notiz an.
 - 🌗 **Hell, Dunkel oder System** – das Erscheinungsbild stellst du in den Einstellungen ein.
 - 🔐 **Token sicher abgelegt** – im Android Keystore bzw. in der iOS Keychain, nicht im Klartext.
 
@@ -107,7 +107,7 @@ Der gesamte Code ist in **[Flutter](https://flutter.dev)** (Programmiersprache *
 | Token-Speicher | [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) (Keystore / Keychain) |
 | Server-Anbindung | [http](https://pub.dev/packages/http) → [Memos-API](https://usememos.com/docs/api/latest) |
 | Markdown-Anzeige | [flutter_markdown](https://pub.dev/packages/flutter_markdown), Links über [url_launcher](https://pub.dev/packages/url_launcher) |
-| Homescreen-Widget | [home_widget](https://pub.dev/packages/home_widget) + natives Android-Widget (Kotlin) |
+| Homescreen-Widget | natives Android-Widget (Kotlin), liest Notizen direkt aus SQLite; [home_widget](https://pub.dev/packages/home_widget) aktualisiert das Widget |
 | Log teilen | [share_plus](https://pub.dev/packages/share_plus) |
 
 > ℹ️ **Hinweis zu iOS:** Das Widget ist bisher nur für Android umgesetzt. Für iOS fehlen die WidgetKit-Erweiterung (`NoteWidget`) samt App Group sowie der Eintrag des URL-Schemas `notizapp` in der `Info.plist`. Der Android-Build ist der aktuell vorgesehene Hauptweg.

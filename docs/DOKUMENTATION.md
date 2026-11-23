@@ -417,14 +417,20 @@ Für Kamera, Mikrofon und Standort fragt die App bei Bedarf die Plattformberecht
 
 ```
 AppState._updateWidget()
-   └─ HomeWidget.saveWidgetData('widget_notes', [{id, title, preview}, …])
+   ├─ aktualisiert bei Bedarf den Bild-Thumbnail-Cache
    └─ HomeWidget.updateWidget('NoteWidgetProvider')
         └─ NoteWidgetProvider.onUpdate()
-             ├─ kopiert die JSON-Daten in die eigene Preferences-Datei (note_widget_data)
              ├─ verbindet die Liste mit NoteWidgetService
              └─ setzt Klick-Aktionen
-                  └─ NoteWidgetService liest die Daten und liefert die Zeilen
+                  └─ NoteWidgetService öffnet notiz_app.sqlite nur lesend
+                       ├─ liest Notizen und Widget-Auswahl aus notes / widget_ids
+                       └─ liefert Titel, Vorschau und Thumbnail-Pfad
 ```
+
+App und Widget verwenden so denselben lokalen Notizbestand. Die Datenbank bleibt
+die einzige Quelle für Notizen; das Widget legt keine separate JSON-Notizkopie an.
+Die Widget-Auswahl ist bereits in `widget_ids` gespeichert. Der Thumbnail-Pfad ist
+nur ein Anzeige-Cache und enthält keine Notizdaten.
 
 ### Wann wird das Widget aktualisiert?
 
