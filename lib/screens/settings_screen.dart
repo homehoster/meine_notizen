@@ -484,12 +484,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 ListTile(
                   enabled: !backupBusy,
-                  leading: const Icon(Icons.folder_open_outlined),
-                  title: const Text('Backup-Ordner festlegen'),
+                  leading: Icon(
+                    s.backupFolderError == null
+                        ? Icons.folder_open_outlined
+                        : Icons.warning_amber_rounded,
+                    color: s.backupFolderError == null ? null : scheme.error,
+                  ),
+                  title: const Text(
+                    'Backup-Ordner festlegen oder Berechtigung erneuern',
+                  ),
                   subtitle: Text(
-                    s.backupFolderUri == null
-                        ? 'Noch kein Ziel ausgewählt'
-                        : 'Zielordner ist eingerichtet',
+                    s.backupFolderError ??
+                        (s.backupFolderUri == null
+                            ? 'Noch kein Ziel ausgewählt'
+                            : 'Zielordner und Schreibberechtigung sind verfügbar'),
+                    style: s.backupFolderError == null
+                        ? null
+                        : TextStyle(color: scheme.error),
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: backupBusy ? null : _chooseBackupFolder,

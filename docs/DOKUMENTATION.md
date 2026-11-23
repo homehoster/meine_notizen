@@ -291,6 +291,10 @@ Unter **Einstellungen → Im- und Export** kann ein Backup-Ordner ausgewählt,
 ein sofortiger Export erstellt und ein ZIP-Backup importiert werden. Android
 verwendet SAF mit dauerhaft gespeicherter Ordnerfreigabe. Auf anderen
 Dateisystemen werden die Dateiauswahl-URIs verwendet.
+Die App prüft die gespeicherte Lese-/Schreibberechtigung und Erreichbarkeit
+beim Start, bei Rückkehr in die App und vor dem Schreiben. Fehlt der Zugriff,
+zeigt die Einstellung den Grund an; durch erneute Ordnerauswahl kann die
+Berechtigung wieder erteilt werden.
 
 Automatische Backups sind optional und werden nach jedem lokalen Speichern
 erstellt. Die Aufbewahrung ist auf 2 bis 10 Versionen einstellbar (Standard: 5).

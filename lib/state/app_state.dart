@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:home_widget/home_widget.dart';
@@ -59,6 +60,7 @@ class AppState extends ChangeNotifier {
   bool automaticBackupsEnabled = false;
   int backupRetentionCount = 5;
   String? backupFolderUri;
+  String? backupFolderError;
   String? backupError;
   NavigationTarget navigation = const NavigationTarget(NavigationKind.all);
   Future<void> _backupQueue = Future<void>.value();
@@ -163,6 +165,7 @@ class AppState extends ChangeNotifier {
         preferences.getBool('automaticBackupsEnabled') ?? false;
     backupRetentionCount = preferences.getInt('backupRetentionCount') ?? 5;
     backupFolderUri = preferences.getString('backupFolderUri');
+    await _refreshBackupFolderStatus();
     LogService.setEnabled(logEnabled);
     token = await _secure.read(key: 'token') ?? '';
     final data = await _store.load();
@@ -250,32 +253,41 @@ class AppState extends ChangeNotifier {
         persistablePermission: true,
       );
       selectedUri = selected?.uri;
-      if (selectedUri != null &&
-          !await SafUtil().hasPersistedPermission(
-            selectedUri,
-            checkRead: true,
-            checkWrite: true,
-          )) {
-        throw StateError(
-          'Der ausgewählte Ordner hat keine dauerhaft gespeicherte Schreibberechtigung.',
-        );
-      }
     } else {
       selectedUri = (await FilePicker.pickDirectory(
         dialogTitle: 'Backup-Ordner auswählen',
       ))?.toString();
     }
     if (selectedUri == null) return;
+    final issue = await _backupFolderIssue(selectedUri);
+    if (issue != null) {
+      backupFolderError = issue;
+      notifyListeners();
+      throw StateError(issue);
+    }
     if (oldUri != null &&
         oldUri.startsWith('content:') &&
         oldUri != selectedUri) {
-      await SafUtil().releasePersistedPermission(
-        oldUri,
-        read: true,
-        write: true,
-      );
+      try {
+        if (await SafUtil().hasPersistedPermission(
+          oldUri,
+          checkRead: true,
+          checkWrite: true,
+        )) {
+          await SafUtil().releasePersistedPermission(
+            oldUri,
+            read: true,
+            write: true,
+          );
+        }
+      } on PlatformException catch (error) {
+        await LogService.log(
+          'Vorherige Backup-Ordnerberechtigung konnte nicht freigegeben werden: $error',
+        );
+      }
     }
     backupFolderUri = selectedUri;
+    backupFolderError = null;
     if (notice == backupError) notice = null;
     backupError = null;
     final preferences = await SharedPreferences.getInstance();
@@ -283,10 +295,86 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String?> _backupFolderIssue(String uri) async {
+    final parsedUri = Uri.tryParse(uri);
+    if (parsedUri == null) {
+      return 'Der Backup-Ordner ist ungültig. Bitte neu auswählen.';
+    }
+
+    if (Platform.isAndroid && parsedUri.scheme == 'content') {
+      try {
+        if (!await SafUtil().hasPersistedPermission(
+          uri,
+          checkRead: true,
+          checkWrite: true,
+        )) {
+          return 'Die Schreibberechtigung für den Backup-Ordner fehlt. Bitte den Ordner erneut auswählen und den Zugriff erlauben.';
+        }
+        await SafUtil().list(uri);
+        return null;
+      } on PlatformException catch (error) {
+        await LogService.log('Backup-Ordner nicht verfügbar: $error');
+        return 'Kein Zugriff auf den Backup-Ordner. Er wurde möglicherweise gelöscht oder die Berechtigung entzogen. Bitte erneut auswählen.';
+      }
+    }
+
+    if (parsedUri.scheme == 'file') {
+      try {
+        if (await Directory(parsedUri.toFilePath()).exists()) return null;
+      } on FileSystemException catch (error) {
+        await LogService.log('Backup-Ordner nicht verfügbar: $error');
+      }
+      return 'Der Backup-Ordner wurde gelöscht oder ist nicht verfügbar. Bitte erneut auswählen.';
+    }
+
+    return 'Der Backup-Ordner kann nicht verwendet werden. Bitte erneut auswählen.';
+  }
+
+  Future<void> _refreshBackupFolderStatus() async {
+    final uri = backupFolderUri;
+    if (uri == null) {
+      if (automaticBackupsEnabled) {
+        backupFolderError =
+            'Kein Backup-Ordner festgelegt. Bitte einen Ordner auswählen.';
+      } else {
+        backupFolderError = null;
+      }
+      return;
+    }
+
+    backupFolderError = await _backupFolderIssue(uri);
+    if (backupFolderError != null && automaticBackupsEnabled) {
+      automaticBackupsEnabled = false;
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool('automaticBackupsEnabled', false);
+    }
+  }
+
+  Future<void> _requireBackupFolder() async {
+    final uri = backupFolderUri;
+    if (uri == null) {
+      backupFolderError = 'Bitte zuerst einen Backup-Ordner festlegen.';
+      notifyListeners();
+      throw StateError(backupFolderError!);
+    }
+    backupFolderError = await _backupFolderIssue(uri);
+    if (backupFolderError != null) {
+      if (automaticBackupsEnabled) {
+        automaticBackupsEnabled = false;
+        final preferences = await SharedPreferences.getInstance();
+        await preferences.setBool('automaticBackupsEnabled', false);
+      }
+      notifyListeners();
+      throw StateError(backupFolderError!);
+    }
+    backupFolderError = null;
+  }
+
   Future<void> setAutomaticBackupsEnabled(bool value) async {
     if (value && (backupFolderUri == null || backupFolderUri!.isEmpty)) {
       throw StateError('Bitte zuerst einen Backup-Ordner festlegen.');
     }
+    if (value) await _requireBackupFolder();
     automaticBackupsEnabled = value;
     if (notice == backupError) notice = null;
     backupError = null;
@@ -342,6 +430,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _writeBackup(String prefix, {bool rotate = false}) async {
+    await _requireBackupFolder();
     final archive = await _store.createBackupArchive();
     final name =
         '${prefix}_${DateTime.now().toUtc().microsecondsSinceEpoch}.zip';
@@ -1311,7 +1400,11 @@ class AppState extends ChangeNotifier {
     return bytes;
   }
 
-  Future<void> onForeground() => _updateWidget();
+  Future<void> onForeground() async {
+    await _refreshBackupFolderStatus();
+    notifyListeners();
+    await _updateWidget();
+  }
 
   Future<void> onBackground() async {
     try {
