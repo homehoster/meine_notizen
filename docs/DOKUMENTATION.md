@@ -30,7 +30,7 @@ Diese Seite beschreibt, **wie die App aufgebaut ist und was sie im Detail tut**.
 ```
 ┌──────────────────────── Flutter (Dart) ────────────────────────┐
 │                                                                │
-│  Screens ──► AppState (Provider) ──► LocalStore  (notes.json)  │
+│  Screens ──► AppState (Provider) ──► LocalStore  (SQLite)      │
 │  (UI)            │                                             │
 │                  ├──► MemosApi ──► Memos-Server (REST, Bearer) │
 │                  ├──► HomeWidget ─────────────┐                │
@@ -62,7 +62,7 @@ Grundprinzipien:
 | `models/task_doc.dart` | Markdown-Parser/-Serializer für Listen (`Task`, `TaskSeg`, `TextSeg`), Hilfsfunktionen für Aufgaben und die Widget-Vorschau (`widgetPreview`). |
 | `state/app_state.dart` | Zentraler Zustand: Notizen, Einstellungen, Sync, verzögertes Senden, Widget-Aktualisierung. |
 | `services/api.dart` | `MemosApi`: HTTP-Zugriff auf die Memos-REST-API. |
-| `services/store.dart` | `LocalStore`: sicheres Lesen/Schreiben der lokalen Datei `notes.json`. |
+| `services/store.dart` | `LocalStore`: lokale SQLite-Datenbank und einmalige Migration aus `notes.json`. |
 | `services/log.dart` | `LogService`: optionale, begrenzte Logdatei; Teilen über das System-Teilen-Menü. |
 | `screens/home_screen.dart` | Startseite mit Notizkarten, Seitenmenü, Sync-Anzeige. |
 | `screens/note_screen.dart` | Notizansicht und Editor mit Werkzeugleiste. |
@@ -236,14 +236,27 @@ Schlägt ein Vorgang fehl, bleibt die Notiz als `dirty` markiert (Wolken-Symbol)
 
 ## 7. Lokale Speicherung
 
-| Datei | Inhalt |
-|-------|--------|
-| `notes.json` | Aktueller Stand |
-| `notes.json.bak` | Vorheriger Stand (Sicherungskopie) |
-| `notes.json.tmp` | Zwischendatei während des Schreibens |
-| `notes.json.corrupt-<zeit>` | Beschädigte Datei, die zur Sicherheit aufbewahrt wurde |
+Der aktive lokale Offline-Cache liegt in `notiz_app.sqlite` im App-Dokumentenordner
+(`getApplicationDocumentsDirectory`). Die Datenbank verwendet WAL, Fremdschlüssel und
+SQL-Transaktionen. Beim ersten Start wird ein vorhandener `notes.json`-Bestand
+einmalig importiert; die importierte Datei wird als
+`notes.json.imported-<zeit>` aufbewahrt.
 
-Die Dateien liegen im App-Dokumentenordner (`getApplicationDocumentsDirectory`).
+Wichtige Tabellen:
+
+| Tabelle | Inhalt |
+|---------|--------|
+| `notes` | Notizinhalt, Status, Sichtbarkeit, Bereich, Dirty-State und Sync-Zeitpunkte |
+| `attachments` | Server-UID, Dateiname, MIME-Typ, Größe, lokaler Pfad, SHA-256 und Downloadstatus |
+| `pending_attachments` | Lokale Hochladedateien, Prüfsumme, Uploadstatus und Fehlerversuche |
+| `relations` | Beziehungen zwischen Notizen |
+| `saved_views` / `spaces` / `widget_ids` | Lokale Ansichten, Bereiche und Widget-Auswahl |
+| `sync_state` | Instanzprofil, Serverversion und Synchronisationsmetadaten |
+
+Anhänge liegen unter `attachments/` als Dateien. Die Datenbank enthält nur Metadaten
+und Dateipfade. Nicht mehr zugeordnete oder mindestens 30 Tage nicht verwendete
+Anhänge werden regelmäßig bereinigt. Hochzuladende Dateien werden erst nach erfolgreicher
+Übertragung entfernt.
 
 **Format**
 
@@ -263,23 +276,21 @@ Die Dateien liegen im App-Dokumentenordner (`getApplicationDocumentsDirectory`).
 }
 ```
 
-**Sicheres Schreiben (`save`)**
+**Schreiben (`save`)**
 
-1. Daten in `notes.json.tmp` schreiben (mit `flush`).
-2. Bisherige `notes.json` in `notes.json.bak` umbenennen.
-3. `notes.json.tmp` in `notes.json` umbenennen (atomar).
-
-Schreibvorgänge laufen nacheinander in einer Warteschlange, sodass sie sich nicht überschneiden.
+Schreibvorgänge laufen in einer Warteschlange. Zusammengehörige Änderungen werden
+in einer SQLite-Transaktion ersetzt. Neue Schemainstanzen werden über eine interne
+Schema-Version verwaltet.
 
 **Laden (`load`)**
 
-- `notes.json` lesbar → verwenden.
-- `notes.json` beschädigt → Datei als `notes.json.corrupt-<zeit>` sichern, aus `notes.json.bak` wiederherstellen und einen **Hinweis** auf der Startseite zeigen.
-- `notes.json` fehlt (Abbruch zwischen den Umbenennungen) → `notes.json.tmp`, danach `notes.json.bak` verwenden.
-- Nichts Lesbares → leere Liste (mit Hinweis, falls eine Datei beschädigt war).
+- Vorhandene SQLite-Daten werden als aktiver Offline-Cache geladen.
+- Die einmalige JSON-Migration verwendet `notes.json`, danach `notes.json.tmp`
+  und `notes.json.bak`; die verwendete Datei wird aufbewahrt.
+- Beschädigte JSON-Dateien werden isoliert umbenannt.
 
-Einstellungen (URL, Design, Logging) liegen in `shared_preferences`, der Token im sicheren Speicher.
-Zusätzlich enthält `notes.json` die lokal gespeicherten Ansichten, den zuletzt geladenen Bereichsbestand und den Spaces-Verfügbarkeitsstatus. Hochzuladende Dateien liegen im App-Dokumentenordner unter `pending_attachments`; ihre lokalen Pfade werden mitgespeichert.
+Einstellungen (URL, Design, Logging) liegen in `shared_preferences`, der Token
+im sicheren Speicher.
 
 ---
 

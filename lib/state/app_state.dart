@@ -163,6 +163,7 @@ class AppState extends ChangeNotifier {
       notice = data.warning;
       LogService.log(data.warning!);
     }
+    unawaited(_store.pruneAttachments());
     notifyListeners();
     unawaited(_updateWidget());
     if (configured) unawaited(sync());
@@ -808,6 +809,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     note.busy = true;
+    unawaited(_store.markSyncAttempt(note.id));
     var changedMeanwhile = false;
     final dirtyFieldsAtStart = Set<String>.of(note.dirtyFields);
     try {
@@ -931,10 +933,12 @@ class AppState extends ChangeNotifier {
         note.dirty =
             note.dirtyFields.isNotEmpty || note.pendingAttachments.isNotEmpty;
       }
+      await _store.markNoteSynced(note.id, serverUpdatedAt: note.updated.toUtc().toIso8601String());
       error = null;
       await _persist();
     } catch (e) {
       error = '$e';
+      unawaited(_store.markSyncError(note.id, '$e'));
       LogService.log('Push fehlgeschlagen (${note.id}): $e');
     } finally {
       note.busy = false;
@@ -947,8 +951,17 @@ class AppState extends ChangeNotifier {
     try {
       final profile = await api.getInstanceProfile();
       serverVersion = profile['version'] as String? ?? '';
+      await _store.setSyncState('serverVersion', serverVersion);
+      await _store.setSyncState(
+        'serverProfile',
+        jsonEncode(profile),
+      );
     } catch (e) {
       LogService.log('Instanzprofil konnte nicht gelesen werden: $e');
+      await _store.setSyncState(
+        'profileStatus',
+        'unavailable',
+      );
     }
     try {
       spaces = await api.listSpaces();
@@ -1010,7 +1023,16 @@ class AppState extends ChangeNotifier {
       merged.addAll(notes.where((note) => note.isLocal));
       notes = merged;
       await _persist();
+      await _store.pruneAttachments();
       LogService.log('Sync fertig: ${notes.length} Notizen');
+    } on MemosApiException catch (e) {
+      if (e.statusCode == 404 || e.statusCode == 501) {
+        error =
+            'Sync blockiert: Diese Memos-Version oder API-Struktur wird von der App nicht unterstützt.';
+      } else {
+        error = '$e';
+      }
+      LogService.log('Sync nicht kompatibel: $e');
     } catch (e) {
       error = '$e';
       LogService.log('Sync fehlgeschlagen: $e');
@@ -1020,8 +1042,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<List<int>> fetchAttachment(String name) =>
-      _api.downloadAttachment(name.split('/').last);
+  Future<List<int>> fetchAttachment(String name) async {
+    final uid = name.split('/').last;
+    final cached = await _store.cachedAttachmentPath(uid);
+    if (cached != null) return await File(cached).readAsBytes();
+    final bytes = await _api.downloadAttachment(uid);
+    await _store.cacheDownloadedAttachment(uid, bytes);
+    return bytes;
+  }
 
   Future<void> onForeground() => _updateWidget();
 
