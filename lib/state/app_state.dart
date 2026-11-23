@@ -343,11 +343,6 @@ class AppState extends ChangeNotifier {
     }
 
     backupFolderError = await _backupFolderIssue(uri);
-    if (backupFolderError != null && automaticBackupsEnabled) {
-      automaticBackupsEnabled = false;
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setBool('automaticBackupsEnabled', false);
-    }
   }
 
   Future<void> _requireBackupFolder() async {
@@ -359,11 +354,6 @@ class AppState extends ChangeNotifier {
     }
     backupFolderError = await _backupFolderIssue(uri);
     if (backupFolderError != null) {
-      if (automaticBackupsEnabled) {
-        automaticBackupsEnabled = false;
-        final preferences = await SharedPreferences.getInstance();
-        await preferences.setBool('automaticBackupsEnabled', false);
-      }
       notifyListeners();
       throw StateError(backupFolderError!);
     }
@@ -413,6 +403,10 @@ class AppState extends ChangeNotifier {
       backupError = null;
     } catch (e) {
       backupError = 'Automatisches Backup fehlgeschlagen: $e';
+      await _refreshBackupFolderStatus();
+      backupFolderError ??=
+          'Das automatische Backup konnte nicht geschrieben werden. '
+          'Bitte den Ordnerzugriff prüfen oder erneut erteilen.';
       notice = backupError;
       LogService.log(backupError!);
     }

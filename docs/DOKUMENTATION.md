@@ -294,7 +294,10 @@ Dateisystemen werden die Dateiauswahl-URIs verwendet.
 Die App prüft die gespeicherte Lese-/Schreibberechtigung und Erreichbarkeit
 beim Start, bei Rückkehr in die App und vor dem Schreiben. Fehlt der Zugriff,
 zeigt die Einstellung den Grund an; durch erneute Ordnerauswahl kann die
-Berechtigung wieder erteilt werden.
+Berechtigung wieder erteilt werden. Die Option für automatische Backups bleibt
+bei fehlendem Zugriff aktiv. Auf dem Homescreen erscheint ein Warnbanner mit
+Aktionen zum Erneuern des Ordnerzugriffs oder zum Deaktivieren der Backups; es
+verschwindet nach erfolgreicher Wiederherstellung des Zugriffs.
 
 Automatische Backups sind optional und werden nach jedem lokalen Speichern
 erstellt. Die Aufbewahrung ist auf 2 bis 10 Versionen einstellbar (Standard: 5).

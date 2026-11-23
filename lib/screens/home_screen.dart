@@ -439,6 +439,19 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isSearchOpen = true);
   }
 
+  Future<void> _disableAutomaticBackups(AppState state) async {
+    try {
+      await state.setAutomaticBackupsEnabled(false);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Backup konnte nicht deaktiviert werden: $error'),
+        ),
+      );
+    }
+  }
+
   Widget _buildDrawer(BuildContext context, AppState state) {
     final theme = Theme.of(context);
 
@@ -799,6 +812,26 @@ class _HomeScreenState extends State<HomeScreen> {
               content: Text(s.notice!),
               actions: [
                 TextButton(onPressed: s.dismissNotice, child: const Text('OK')),
+              ],
+            ),
+          if (s.automaticBackupsEnabled && s.backupFolderError != null)
+            MaterialBanner(
+              content: Text('Automatisches Backup: ${s.backupFolderError}'),
+              leading: Icon(
+                Icons.warning_amber_rounded,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  ),
+                  child: const Text('Zugriff erneuern'),
+                ),
+                TextButton(
+                  onPressed: () => _disableAutomaticBackups(s),
+                  child: const Text('Deaktivieren'),
+                ),
               ],
             ),
           if (s.error != null)
