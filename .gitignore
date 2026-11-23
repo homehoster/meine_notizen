@@ -49,9 +49,4 @@ app.*.map.json
 
 # test related
 test/*
-!test/models/
-test/models/*
-!test/models/note_test.dart
-!test/services/
-test/services/*
-!test/services/api_test.dart
+

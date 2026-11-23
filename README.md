@@ -103,7 +103,7 @@ Der gesamte Code ist in **[Flutter](https://flutter.dev)** (Programmiersprache *
 |---------|-----------|
 | Framework | [Flutter](https://flutter.dev) / [Dart](https://dart.dev) |
 | State-Management | [provider](https://pub.dev/packages/provider) |
-| Lokale Speicherung | JSON-Datei (`path_provider`) + [shared_preferences](https://pub.dev/packages/shared_preferences) für Einstellungen |
+| Lokale Speicherung | SQLite-Offline-Cache (`sqflite`) + [shared_preferences](https://pub.dev/packages/shared_preferences) für Einstellungen |
 | Token-Speicher | [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) (Keystore / Keychain) |
 | Server-Anbindung | [http](https://pub.dev/packages/http) → [Memos-API](https://usememos.com/docs/api/latest) |
 | Markdown-Anzeige | [flutter_markdown](https://pub.dev/packages/flutter_markdown), Links über [url_launcher](https://pub.dev/packages/url_launcher) |

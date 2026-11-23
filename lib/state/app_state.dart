@@ -6,9 +6,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:saf_stream/saf_stream.dart';
+import 'package:saf_util/saf_util.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/note.dart';
@@ -53,7 +56,12 @@ class AppState extends ChangeNotifier {
   String? error;
   String? notice;
   bool logEnabled = false;
+  bool automaticBackupsEnabled = false;
+  int backupRetentionCount = 5;
+  String? backupFolderUri;
+  String? backupError;
   NavigationTarget navigation = const NavigationTarget(NavigationKind.all);
+  Future<void> _backupQueue = Future<void>.value();
 
   Future<void> Function()? onBeforeBackground;
 
@@ -151,6 +159,10 @@ class AppState extends ChangeNotifier {
     assistedEditingEnabled =
         preferences.getBool('assistedEditingEnabled') ?? true;
     logEnabled = preferences.getBool('log') ?? false;
+    automaticBackupsEnabled =
+        preferences.getBool('automaticBackupsEnabled') ?? false;
+    backupRetentionCount = preferences.getInt('backupRetentionCount') ?? 5;
+    backupFolderUri = preferences.getString('backupFolderUri');
     LogService.setEnabled(logEnabled);
     token = await _secure.read(key: 'token') ?? '';
     final data = await _store.load();
@@ -159,10 +171,6 @@ class AppState extends ChangeNotifier {
     savedViews = data.savedViews;
     spaces = data.spaces;
     spacesSupported = data.spacesSupported;
-    if (data.warning != null) {
-      notice = data.warning;
-      LogService.log(data.warning!);
-    }
     unawaited(_store.pruneAttachments());
     notifyListeners();
     unawaited(_updateWidget());
@@ -233,8 +241,264 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _persist() =>
-      _store.save(notes, widgetIds, savedViews, spaces, spacesSupported);
+  Future<void> chooseBackupFolder() async {
+    final oldUri = backupFolderUri;
+    String? selectedUri;
+    if (Platform.isAndroid) {
+      final selected = await SafUtil().pickDirectory(
+        writePermission: true,
+        persistablePermission: true,
+      );
+      selectedUri = selected?.uri;
+      if (selectedUri != null &&
+          !await SafUtil().hasPersistedPermission(
+            selectedUri,
+            checkRead: true,
+            checkWrite: true,
+          )) {
+        throw StateError(
+          'Der ausgewählte Ordner hat keine dauerhaft gespeicherte Schreibberechtigung.',
+        );
+      }
+    } else {
+      selectedUri = (await FilePicker.pickDirectory(
+        dialogTitle: 'Backup-Ordner auswählen',
+      ))?.toString();
+    }
+    if (selectedUri == null) return;
+    if (oldUri != null &&
+        oldUri.startsWith('content:') &&
+        oldUri != selectedUri) {
+      await SafUtil().releasePersistedPermission(
+        oldUri,
+        read: true,
+        write: true,
+      );
+    }
+    backupFolderUri = selectedUri;
+    if (notice == backupError) notice = null;
+    backupError = null;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString('backupFolderUri', selectedUri);
+    notifyListeners();
+  }
+
+  Future<void> setAutomaticBackupsEnabled(bool value) async {
+    if (value && (backupFolderUri == null || backupFolderUri!.isEmpty)) {
+      throw StateError('Bitte zuerst einen Backup-Ordner festlegen.');
+    }
+    automaticBackupsEnabled = value;
+    if (notice == backupError) notice = null;
+    backupError = null;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('automaticBackupsEnabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setBackupRetentionCount(int value) async {
+    if (value < 2 || value > 10) {
+      throw RangeError.range(value, 2, 10, 'value');
+    }
+    backupRetentionCount = value;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setInt('backupRetentionCount', value);
+    notifyListeners();
+  }
+
+  Future<void> _persist() async {
+    await _store.save(notes, widgetIds, savedViews, spaces, spacesSupported);
+    if (!automaticBackupsEnabled) return;
+    if (backupFolderUri == null) {
+      backupError =
+          'Automatisches Backup fehlgeschlagen: Kein Zielordner festgelegt.';
+      notice = backupError;
+      notifyListeners();
+      return;
+    }
+    final result = _backupQueue.then(
+      (_) => _writeBackup('notiz_app_backup', rotate: true),
+    );
+    _backupQueue = result.catchError((Object _) {});
+    try {
+      await result;
+      if (notice == backupError) notice = null;
+      backupError = null;
+    } catch (e) {
+      backupError = 'Automatisches Backup fehlgeschlagen: $e';
+      notice = backupError;
+      LogService.log(backupError!);
+    }
+    notifyListeners();
+  }
+
+  Future<void> exportBackupNow() async {
+    if (backupFolderUri == null) {
+      throw StateError('Bitte zuerst einen Exportordner festlegen.');
+    }
+    await _writeBackup('notiz_app_export');
+    if (notice == backupError) notice = null;
+    backupError = null;
+    notifyListeners();
+  }
+
+  Future<void> _writeBackup(String prefix, {bool rotate = false}) async {
+    final archive = await _store.createBackupArchive();
+    final name =
+        '${prefix}_${DateTime.now().toUtc().microsecondsSinceEpoch}.zip';
+    try {
+      final uri = Uri.parse(backupFolderUri!);
+      if (uri.scheme == 'content') {
+        if (rotate) {
+          await _writeNumberedSafBackup(prefix, archive);
+        } else {
+          await SafStream().pasteLocalFile(
+            archive.path,
+            backupFolderUri!,
+            name,
+            'application/zip',
+          );
+        }
+      } else if (uri.scheme == 'file') {
+        final directory = Directory(uri.toFilePath());
+        await directory.create(recursive: true);
+        if (rotate) {
+          await _writeNumberedLocalBackup(prefix, archive, directory);
+        } else {
+          await archive.copy(p.join(directory.path, name));
+        }
+      } else {
+        throw FormatException('Ungültiger Backupordner: $backupFolderUri');
+      }
+    } finally {
+      if (await archive.exists()) await archive.delete();
+    }
+  }
+
+  Future<void> _writeNumberedSafBackup(String prefix, File archive) async {
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final pendingName = '${prefix}_pending_$stamp.tmp';
+    await SafStream().pasteLocalFile(
+      archive.path,
+      backupFolderUri!,
+      pendingName,
+      'application/zip',
+    );
+
+    final files =
+        (await SafUtil().list(backupFolderUri!))
+            .where(
+              (file) =>
+                  !file.isDir &&
+                  file.name.startsWith('${prefix}_') &&
+                  file.name.endsWith('.zip'),
+            )
+            .toList()
+          ..sort((a, b) => _compareBackupNames(a.name, b.name, prefix));
+    final retained = files.take(backupRetentionCount - 1).toList();
+    for (final old in files.skip(retained.length)) {
+      await SafUtil().delete(old.uri, false);
+    }
+
+    final staged = <String>[];
+    for (var index = 0; index < retained.length; index++) {
+      final moved = await SafUtil().rename(
+        retained[index].uri,
+        false,
+        '${prefix}_rotating_${stamp}_$index.tmp',
+      );
+      staged.add(moved.uri);
+    }
+    for (var index = 0; index < staged.length; index++) {
+      await SafUtil().rename(
+        staged[index],
+        false,
+        '${prefix}_${index + 2}.zip',
+      );
+    }
+
+    final pending = (await SafUtil().list(backupFolderUri!))
+        .firstWhere((file) => !file.isDir && file.name == pendingName);
+    await SafUtil().rename(pending.uri, false, '${prefix}_1.zip');
+  }
+
+  Future<void> _writeNumberedLocalBackup(
+    String prefix,
+    File archive,
+    Directory directory,
+  ) async {
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final pending = await archive.copy(
+      p.join(directory.path, '${prefix}_pending_$stamp.tmp'),
+    );
+    final files = await directory
+        .list()
+        .where((entity) {
+          return entity is File &&
+              p.basename(entity.path).startsWith('${prefix}_') &&
+              entity.path.endsWith('.zip');
+        })
+        .cast<File>()
+        .toList();
+    files.sort(
+      (a, b) =>
+          _compareBackupNames(p.basename(a.path), p.basename(b.path), prefix),
+    );
+    final retained = files.take(backupRetentionCount - 1).toList();
+    for (final old in files.skip(retained.length)) {
+      await old.delete();
+    }
+
+    final staged = <File>[];
+    for (var index = 0; index < retained.length; index++) {
+      staged.add(
+        await retained[index].rename(
+          p.join(directory.path, '${prefix}_rotating_${stamp}_$index.tmp'),
+        ),
+      );
+    }
+    for (var index = 0; index < staged.length; index++) {
+      await staged[index].rename(
+        p.join(directory.path, '${prefix}_${index + 2}.zip'),
+      );
+    }
+    await pending.rename(p.join(directory.path, '${prefix}_1.zip'));
+  }
+
+  int _compareBackupNames(String first, String second, String prefix) {
+    final pattern = RegExp('^${RegExp.escape(prefix)}_(\\d+)\\.zip\$');
+    final firstNumber = int.tryParse(pattern.firstMatch(first)?.group(1) ?? '');
+    final secondNumber = int.tryParse(
+      pattern.firstMatch(second)?.group(1) ?? '',
+    );
+    if (firstNumber != null && secondNumber != null) {
+      return firstNumber.compareTo(secondNumber);
+    }
+    if (firstNumber != null) return -1;
+    if (secondNumber != null) return 1;
+    return second.compareTo(first);
+  }
+
+  Future<void> importBackup(File archive) async {
+    if (syncing || notes.any((note) => note.busy)) {
+      throw StateError(
+        'Während einer Synchronisation oder Notizübertragung ist kein Import möglich.',
+      );
+    }
+    for (final timer in _pushTimers.values) {
+      timer.cancel();
+    }
+    _pushTimers.clear();
+    await _store.importBackup(archive);
+    final data = await _store.load();
+    notes = data.notes;
+    widgetIds = data.widgetIds;
+    savedViews = data.savedViews;
+    spaces = data.spaces;
+    spacesSupported = data.spacesSupported;
+    backupError = null;
+    notifyListeners();
+    await _updateWidget();
+  }
 
   void select(NavigationTarget target) {
     navigation = target;
@@ -933,7 +1197,10 @@ class AppState extends ChangeNotifier {
         note.dirty =
             note.dirtyFields.isNotEmpty || note.pendingAttachments.isNotEmpty;
       }
-      await _store.markNoteSynced(note.id, serverUpdatedAt: note.updated.toUtc().toIso8601String());
+      await _store.markNoteSynced(
+        note.id,
+        serverUpdatedAt: note.updated.toUtc().toIso8601String(),
+      );
       error = null;
       await _persist();
     } catch (e) {
@@ -952,16 +1219,10 @@ class AppState extends ChangeNotifier {
       final profile = await api.getInstanceProfile();
       serverVersion = profile['version'] as String? ?? '';
       await _store.setSyncState('serverVersion', serverVersion);
-      await _store.setSyncState(
-        'serverProfile',
-        jsonEncode(profile),
-      );
+      await _store.setSyncState('serverProfile', jsonEncode(profile));
     } catch (e) {
       LogService.log('Instanzprofil konnte nicht gelesen werden: $e');
-      await _store.setSyncState(
-        'profileStatus',
-        'unavailable',
-      );
+      await _store.setSyncState('profileStatus', 'unavailable');
     }
     try {
       spaces = await api.listSpaces();
@@ -1027,8 +1288,7 @@ class AppState extends ChangeNotifier {
       LogService.log('Sync fertig: ${notes.length} Notizen');
     } on MemosApiException catch (e) {
       if (e.statusCode == 404 || e.statusCode == 501) {
-        error =
-            'Sync blockiert: Diese Memos-Version oder API-Struktur wird von der App nicht unterstützt.';
+        error = 'Sync blockiert: Diese Memos-Version oder API-Struktur wird von der App nicht unterstützt.';
       } else {
         error = '$e';
       }

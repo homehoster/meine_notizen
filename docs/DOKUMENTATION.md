@@ -62,7 +62,7 @@ Grundprinzipien:
 | `models/task_doc.dart` | Markdown-Parser/-Serializer für Listen (`Task`, `TaskSeg`, `TextSeg`), Hilfsfunktionen für Aufgaben und die Widget-Vorschau (`widgetPreview`). |
 | `state/app_state.dart` | Zentraler Zustand: Notizen, Einstellungen, Sync, verzögertes Senden, Widget-Aktualisierung. |
 | `services/api.dart` | `MemosApi`: HTTP-Zugriff auf die Memos-REST-API. |
-| `services/store.dart` | `LocalStore`: lokale SQLite-Datenbank und einmalige Migration aus `notes.json`. |
+| `services/store.dart` | `LocalStore`: lokale SQLite-Datenbank und Offline-Cache. |
 | `services/log.dart` | `LogService`: optionale, begrenzte Logdatei; Teilen über das System-Teilen-Menü. |
 | `screens/home_screen.dart` | Startseite mit Notizkarten, Seitenmenü, Sync-Anzeige. |
 | `screens/note_screen.dart` | Notizansicht und Editor mit Werkzeugleiste. |
@@ -238,9 +238,7 @@ Schlägt ein Vorgang fehl, bleibt die Notiz als `dirty` markiert (Wolken-Symbol)
 
 Der aktive lokale Offline-Cache liegt in `notiz_app.sqlite` im App-Dokumentenordner
 (`getApplicationDocumentsDirectory`). Die Datenbank verwendet WAL, Fremdschlüssel und
-SQL-Transaktionen. Beim ersten Start wird ein vorhandener `notes.json`-Bestand
-einmalig importiert; die importierte Datei wird als
-`notes.json.imported-<zeit>` aufbewahrt.
+SQL-Transaktionen. Frühere `notes.json`-Bestände werden nicht automatisch übernommen.
 
 Wichtige Tabellen:
 
@@ -258,24 +256,6 @@ und Dateipfade. Nicht mehr zugeordnete oder mindestens 30 Tage nicht verwendete
 Anhänge werden regelmäßig bereinigt. Hochzuladende Dateien werden erst nach erfolgreicher
 Übertragung entfernt.
 
-**Format**
-
-```json
-{
-  "notes": [
-    {
-      "id": "12",
-      "content": "# Einkauf\n- [ ] Milch",
-      "updated": "2026-11-15T10:30:00.000",
-      "pinned": false,
-      "dirty": false,
-      "deleted": false
-    }
-  ],
-  "widgetIds": ["12"]
-}
-```
-
 **Schreiben (`save`)**
 
 Schreibvorgänge laufen in einer Warteschlange. Zusammengehörige Änderungen werden
@@ -285,12 +265,41 @@ Schema-Version verwaltet.
 **Laden (`load`)**
 
 - Vorhandene SQLite-Daten werden als aktiver Offline-Cache geladen.
-- Die einmalige JSON-Migration verwendet `notes.json`, danach `notes.json.tmp`
-  und `notes.json.bak`; die verwendete Datei wird aufbewahrt.
-- Beschädigte JSON-Dateien werden isoliert umbenannt.
 
 Einstellungen (URL, Design, Logging) liegen in `shared_preferences`, der Token
 im sicheren Speicher.
+
+### Backup, Export und Import
+
+Export und automatische Sicherungen verwenden eine versionierte ZIP-Datei:
+
+```text
+manifest.json
+data.json
+files/
+  attachment-<id>.bin
+  pending-<id>.bin
+```
+
+`data.json` enthält den lokalen Notiz-, Ansichts-, Bereichs- und Sync-Stand.
+Anhangdateien werden separat archiviert; Prüfsummen im Manifest schützen vor
+beschädigten oder unvollständigen Imports. Lokale Dateien werden aufgenommen.
+Noch nicht lokal heruntergeladene Serveranhänge bleiben als Serverreferenz
+erhalten und sind daher ohne Serververbindung nicht verfügbar.
+
+Unter **Einstellungen → Im- und Export** kann ein Backup-Ordner ausgewählt,
+ein sofortiger Export erstellt und ein ZIP-Backup importiert werden. Android
+verwendet SAF mit dauerhaft gespeicherter Ordnerfreigabe. Auf anderen
+Dateisystemen werden die Dateiauswahl-URIs verwendet.
+
+Automatische Backups sind optional und werden nach jedem lokalen Speichern
+erstellt. Die Aufbewahrung ist auf 2 bis 10 Versionen einstellbar (Standard: 5).
+Sie heißen `notiz_app_backup_1.zip` bis `notiz_app_backup_n.zip`;
+`_1` ist das neueste und `_n` das älteste Backup. Manuelle Exporte behalten
+einen Zeitstempel im Dateinamen.
+Ein Import ersetzt den lokalen Datenbestand, ändert aber keine Daten auf dem
+Memos-Server. Er wird vor dem Ersetzen geprüft; ungültige Archive werden
+abgewiesen.
 
 ---
 
@@ -503,6 +512,10 @@ Der Dart-Code läuft auf iOS. Noch **nicht** umgesetzt:
 | `url_launcher` | Öffnen von Links |
 | `share_plus` | Teilen der Logdatei |
 | `file_picker` | Dateien über den Systemdialog auswählen |
+| `sqflite` | Lokale SQLite-Datenbank |
+| `archive` | ZIP-Export und -Import |
+| `crypto` | SHA-256-Prüfsummen für Anhangdateien |
+| `saf_stream`, `saf_util` | Schreiben, Auflisten und Rotieren von Android-SAF-Backups |
 | `image_picker` | Bilder auswählen bzw. Kamera verwenden |
 | `record`, `audioplayers` | Audio aufnehmen und wiedergeben |
 | `geolocator` | Standortberechtigung und aktuelle Koordinaten |

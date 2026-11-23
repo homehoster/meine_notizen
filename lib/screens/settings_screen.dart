@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../services/log.dart';
@@ -19,6 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late bool https;
   bool busy = false;
   bool clearingLog = false;
+  bool backupBusy = false;
 
   @override
   void initState() {
@@ -158,10 +163,150 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _chooseBackupFolder() async {
+    final state = context.read<AppState>();
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => backupBusy = true);
+    try {
+      await state.chooseBackupFolder();
+      if (mounted && state.backupFolderUri != null) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Backup-Ordner gespeichert')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Backup-Ordner konnte nicht gesetzt werden: $error'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => backupBusy = false);
+    }
+  }
+
+  Future<void> _exportBackup() async {
+    final state = context.read<AppState>();
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => backupBusy = true);
+    try {
+      await state.exportBackupNow();
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Export wurde gespeichert')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Export fehlgeschlagen: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => backupBusy = false);
+    }
+  }
+
+  Future<void> _importBackup() async {
+    final messenger = ScaffoldMessenger.of(context);
+    Directory? importTempDirectory;
+    try {
+      final selected = await FilePicker.pickFile(
+        dialogTitle: 'Backup auswählen',
+        type: FileType.custom,
+        allowedExtensions: const ['zip'],
+      );
+      if (selected == null || !mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Backup importieren?'),
+          content: const Text(
+            'Der aktuelle lokale Datenbestand wird durch das Backup ersetzt. '
+            'Serverdaten werden dabei nicht verändert.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Importieren'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      final state = context.read<AppState>();
+      setState(() => backupBusy = true);
+      final path = selected.path;
+      if (path != null) {
+        await state.importBackup(File(path));
+      } else {
+        importTempDirectory = await Directory.systemTemp.createTemp(
+          'notiz_backup_import_',
+        );
+        final temporary = File(
+          p.join(importTempDirectory.path, p.basename(selected.name)),
+        );
+        final sink = temporary.openWrite();
+        try {
+          var copiedBytes = 0;
+          await for (final chunk in selected.readAsByteStream()) {
+            copiedBytes += chunk.length;
+            if (copiedBytes > 2 * 1024 * 1024 * 1024) {
+              throw const FileSystemException(
+                'Das Backup ist größer als 2 GB.',
+              );
+            }
+            sink.add(chunk);
+          }
+          await sink.flush();
+        } finally {
+          await sink.close();
+        }
+        await state.importBackup(temporary);
+      }
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Backup wurde importiert')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Import fehlgeschlagen: $error')),
+        );
+      }
+    } finally {
+      try {
+        if (importTempDirectory != null && await importTempDirectory.exists()) {
+          await importTempDirectory.delete(recursive: true);
+        }
+      } catch (error) {
+        if (mounted) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                'Temporäre Importdatei konnte nicht gelöscht werden: $error',
+              ),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => backupBusy = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     final scheme = Theme.of(context).colorScheme;
+    final messenger = ScaffoldMessenger.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Einstellungen')),
       body: ListView(
@@ -171,7 +316,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Synchronisation',
             icon: Icons.cloud_sync_outlined,
           ),
-          const _SubsectionHeader(title: 'Verbindung', icon: Icons.dns_outlined),
+          const _SubsectionHeader(
+            title: 'Verbindung',
+            icon: Icons.dns_outlined,
+          ),
           Card(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,6 +476,105 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
           const _SectionHeader(
+            title: 'Im- und Export',
+            icon: Icons.import_export_outlined,
+          ),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  enabled: !backupBusy,
+                  leading: const Icon(Icons.folder_open_outlined),
+                  title: const Text('Backup-Ordner festlegen'),
+                  subtitle: Text(
+                    s.backupFolderUri == null
+                        ? 'Noch kein Ziel ausgewählt'
+                        : 'Zielordner ist eingerichtet',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: backupBusy ? null : _chooseBackupFolder,
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.backup_outlined),
+                  title: const Text('Automatisches Backup'),
+                  subtitle: const Text(
+                    'Bei jedem lokalen Speichern eine ZIP-Sicherung erstellen',
+                  ),
+                  value: s.automaticBackupsEnabled,
+                  onChanged: backupBusy || s.backupFolderUri == null
+                      ? null
+                      : (value) async {
+                          try {
+                            await s.setAutomaticBackupsEnabled(value);
+                          } catch (error) {
+                            if (mounted) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Einstellung fehlgeschlagen: $error',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                ),
+                ListTile(
+                  enabled: !backupBusy && s.automaticBackupsEnabled,
+                  leading: const Icon(Icons.history_outlined),
+                  title: const Text('Aufbewahrte Versionen'),
+                  trailing: DropdownButton<int>(
+                    value: s.backupRetentionCount,
+                    onChanged: !s.automaticBackupsEnabled || backupBusy
+                        ? null
+                        : (value) {
+                            if (value != null) s.setBackupRetentionCount(value);
+                          },
+                    items: [
+                      for (var count = 2; count <= 10; count++)
+                        DropdownMenuItem(value: count, child: Text('$count')),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  enabled: !backupBusy && s.backupFolderUri != null,
+                  leading: const Icon(Icons.save_alt_outlined),
+                  title: const Text('Jetzt exportieren'),
+                  subtitle: const Text(
+                    'ZIP mit Notizen, Synchronisationsstatus und Anhängen',
+                  ),
+                  onTap: backupBusy ? null : _exportBackup,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  enabled: !backupBusy,
+                  leading: const Icon(Icons.folder_zip_outlined),
+                  title: const Text('Backup importieren'),
+                  subtitle: const Text(
+                    'Wählt eine ZIP-Sicherung; ersetzt den lokalen Datenbestand',
+                  ),
+                  onTap: backupBusy ? null : _importBackup,
+                ),
+                if (backupBusy)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: LinearProgressIndicator(),
+                  ),
+                if (s.backupError != null)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      s.backupError!,
+                      style: TextStyle(color: scheme.error),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const _SectionHeader(
             title: 'Datenschutz',
             icon: Icons.privacy_tip_outlined,
           ),
@@ -404,7 +651,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 4),
                   const AppVersionText(),
                   const SizedBox(height: 4),
-                  const Text('Notizen erfassen – optional mit Memos synchronisiert.'),
+                  const Text(
+                    'Notizen erfassen – optional mit Memos synchronisiert.',
+                  ),
                 ],
               ),
             ),
